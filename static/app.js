@@ -1,5 +1,5 @@
 'use strict';
-const FRONTEND_BUILD='0.5.165';
+const FRONTEND_BUILD='0.5.166';
 const HTML_BUILD=document.querySelector('meta[name="torrent-dashboard-build"]')?.content||'';
 const RECOVERY_KEY=`td-frontend-recovery-${FRONTEND_BUILD}`;
 async function recoverFrontendBuild(reason){
@@ -206,17 +206,15 @@ function setTorrentSort(key){
 }
 function applyFixedTorrentColumnLayout(){
   const table=$('#torrentTable'),wrap=table?.closest('.table-wrap');if(!table||!wrap)return;
-  const cellsFor=key=>document.querySelectorAll(`#torrentTable [data-col="${key}"]`);
-  if(window.matchMedia?.('(max-width:820px)').matches){
+  syncTorrentHeaderOrder();
+  const cols=torrentColGroup(table);
+  if(!torrentDesktopLayout()){
     table.style.width='';table.style.minWidth='';table.style.tableLayout='';
-    for(const key of FIXED_TORRENT_COLUMN_ORDER)cellsFor(key).forEach(cell=>{cell.style.width='';cell.style.minWidth='';cell.style.maxWidth=''});
+    cols.forEach(col=>{col.style.width=''});
     return;
   }
-  const available=Math.max(0,Math.floor(wrap.clientWidth-TORRENT_FIXED_COLUMN_WIDTH));let used=0;
-  FIXED_TORRENT_COLUMN_ORDER.forEach((key,index)=>{
-    const last=index===FIXED_TORRENT_COLUMN_ORDER.length-1,width=last?Math.max(0,available-used):Math.max(0,Math.floor(available*(FIXED_TORRENT_COLUMN_RATIOS[key]||0)));
-    used+=width;const value=`${width}px`;cellsFor(key).forEach(cell=>{cell.style.width=value;cell.style.minWidth=value;cell.style.maxWidth=value});
-  });
+  const widths=torrentColumnPixelWidths(wrap);
+  cols.forEach(col=>{col.style.width=col.dataset.col?`${widths[col.dataset.col]}px`:`${TORRENT_FIXED_COLUMN_WIDTH}px`});
   table.style.width='100%';table.style.minWidth='0';table.style.tableLayout='fixed';
 }
 function bindTorrentColumnHeaderUI(){
@@ -233,6 +231,176 @@ function bindTorrentColumnHeaderUI(){
   syncTorrentSortHeaders();
   head.addEventListener('click',event=>{const th=event.target.closest('th[data-col]');if(th)setTorrentSort(th.dataset.col)});
   head.addEventListener('keydown',event=>{if(event.key!=='Enter'&&event.key!==' ')return;const th=event.target.closest('th[data-col]');if(!th)return;event.preventDefault();setTorrentSort(th.dataset.col)});
+}
+
+// Customizable torrent columns (desktop/tablet). Order and widths are a browser-local
+// preference stored in tdTorrentLayout. Widths are stored as each column's share of the
+// data area, so the table always fits the torrent viewport exactly and never creates a
+// horizontal scrollbar: dragging a column's right edge trades width with its right-hand
+// neighbour, so only the grabbed boundary moves. Mobile keeps the fixed card order.
+const TORRENT_LAYOUT_KEY='tdTorrentLayout';
+const TORRENT_DESKTOP_QUERY='(min-width:821px)';
+const TORRENT_COLUMN_MIN_PX={name:140,progress:96,state:72};
+const TORRENT_COLUMN_DEFAULT_MIN_PX=52;
+const TORRENT_DRAG_THRESHOLD_PX=6;
+const TORRENT_KEYBOARD_RESIZE_PX=16;
+let torrentLayout=loadTorrentLayout(),torrentHeaderGesture=null,torrentHeaderSuppressClickUntil=0;
+function defaultTorrentLayout(){return{order:[...FIXED_TORRENT_COLUMN_ORDER],widths:{...FIXED_TORRENT_COLUMN_RATIOS}}}
+function normalizeTorrentLayout(raw){
+  const base=defaultTorrentLayout();
+  const order=Array.isArray(raw?.order)?raw.order.filter((key,index,all)=>FIXED_TORRENT_COLUMN_ORDER.includes(key)&&all.indexOf(key)===index):[];
+  for(const key of base.order)if(!order.includes(key))order.splice(Math.min(base.order.indexOf(key),order.length),0,key);
+  const widths={};let total=0;
+  for(const key of base.order){const value=Number(raw?.widths?.[key]);widths[key]=Number.isFinite(value)&&value>0.002&&value<1?value:base.widths[key];total+=widths[key]}
+  for(const key of base.order)widths[key]/=total;
+  return{order,widths};
+}
+function loadTorrentLayout(){try{return normalizeTorrentLayout(JSON.parse(localStorage.getItem(TORRENT_LAYOUT_KEY)||'null'))}catch{return defaultTorrentLayout()}}
+function saveTorrentLayout(){try{localStorage.setItem(TORRENT_LAYOUT_KEY,JSON.stringify(torrentLayout))}catch{}}
+function torrentDesktopLayout(){return !!window.matchMedia?.(TORRENT_DESKTOP_QUERY).matches}
+function torrentColumnOrder(){return torrentDesktopLayout()?torrentLayout.order:FIXED_TORRENT_COLUMN_ORDER}
+function torrentColumnMinPx(key){return TORRENT_COLUMN_MIN_PX[key]||TORRENT_COLUMN_DEFAULT_MIN_PX}
+function torrentDataAreaPx(wrap){return Math.max(0,Math.floor((wrap?.clientWidth||0)-TORRENT_FIXED_COLUMN_WIDTH))}
+function torrentColumnPixelWidths(wrap){
+  const available=torrentDataAreaPx(wrap),order=torrentLayout.order,out={};let used=0;
+  order.forEach((key,index)=>{const width=index===order.length-1?Math.max(0,available-used):Math.max(0,Math.floor(available*torrentLayout.widths[key]));out[key]=width;used+=width});
+  return out;
+}
+function torrentColGroup(table){
+  let group=table.querySelector('colgroup');
+  if(!group){group=document.createElement('colgroup');table.insertBefore(group,table.firstChild)}
+  const order=torrentColumnOrder(),current=[...group.children].map(col=>col.dataset.col||'check');
+  if(current.join()!==['check',...order].join()){
+    group.textContent='';
+    const check=document.createElement('col');check.className='check';group.appendChild(check);
+    for(const key of order){const col=document.createElement('col');col.dataset.col=key;group.appendChild(col)}
+  }
+  return [...group.children];
+}
+function torrentHeaderCells(){return [...document.querySelectorAll('#torrentTable thead th[data-col]')]}
+function syncTorrentHeaderOrder(){
+  const row=$('#torrentTable thead tr');if(!row)return;
+  const order=torrentColumnOrder();
+  if(torrentHeaderCells().map(th=>th.dataset.col).join()===order.join())return;
+  for(const key of order){const th=row.querySelector(`th[data-col="${key}"]`);if(th)row.appendChild(th)}
+}
+function bindTorrentColumnLayoutUI(){
+  const row=$('#torrentTable thead tr');if(!row||row.dataset.layoutBound==='1')return;row.dataset.layoutBound='1';
+  row.querySelectorAll('th[data-col]').forEach(th=>{
+    th.title='Click to sort. Drag to move. Drag the right edge to resize. Right-click for column options.';
+    const grip=document.createElement('span');grip.className='torrent-col-resizer';grip.setAttribute('aria-hidden','true');grip.title='Drag to resize. Double-click to reset column widths.';
+    th.appendChild(grip);
+  });
+  // Capture phase: a completed drag or any press on a resize edge must not also sort.
+  row.addEventListener('click',event=>{if(event.target.closest('.torrent-col-resizer')||Date.now()<torrentHeaderSuppressClickUntil){event.preventDefault();event.stopImmediatePropagation()}},true);
+  row.addEventListener('pointerdown',torrentHeaderPointerDown);
+  row.addEventListener('dblclick',event=>{if(!event.target.closest('.torrent-col-resizer'))return;event.preventDefault();resetTorrentLayout({order:false})});
+  row.addEventListener('contextmenu',showTorrentHeaderMenu);
+  row.addEventListener('keydown',torrentHeaderKeydown,true);
+  window.addEventListener('pointermove',torrentHeaderPointerMove);
+  window.addEventListener('pointerup',torrentHeaderPointerEnd);
+  window.addEventListener('pointercancel',torrentHeaderPointerEnd);
+  // Desktop uses the custom order; mobile cards use the fixed order. Re-render when crossing the breakpoint.
+  window.matchMedia?.(TORRENT_DESKTOP_QUERY).addEventListener?.('change',()=>render());
+  $('#torrentHeaderMenu')?.addEventListener('click',event=>{
+    const button=event.target.closest('button[data-layout]');if(!button)return;
+    $('#torrentHeaderMenu').classList.add('hidden');
+    if(button.dataset.layout==='widths')resetTorrentLayout({order:false});
+    else if(button.dataset.layout==='order')resetTorrentLayout({widths:false});
+    else resetTorrentLayout();
+  });
+}
+function torrentHeaderPointerDown(event){
+  if(event.button!==0||!torrentDesktopLayout())return;
+  const th=event.target.closest('th[data-col]');if(!th)return;
+  const key=th.dataset.col;
+  if(event.target.closest('.torrent-col-resizer')){
+    const order=torrentLayout.order;if(!order[order.indexOf(key)+1])return;
+    torrentHeaderGesture={type:'resize',key,startX:event.clientX,startPx:torrentColumnPixelWidths(th.closest('.table-wrap'))};
+    document.body.classList.add('torrent-col-resizing');th.classList.add('torrent-col-resize-active');
+    event.preventDefault();return;
+  }
+  torrentHeaderGesture={type:'pending',key,startX:event.clientX,startY:event.clientY};
+}
+function torrentHeaderPointerMove(event){
+  const gesture=torrentHeaderGesture;if(!gesture)return;
+  if(gesture.type==='resize'){
+    if(applyTorrentColumnResize(gesture.key,gesture.startPx,event.clientX-gesture.startX)){gesture.changed=true;applyFixedTorrentColumnLayout()}
+    event.preventDefault();return;
+  }
+  if(gesture.type==='pending'){
+    if(Math.hypot(event.clientX-gesture.startX,event.clientY-gesture.startY)<TORRENT_DRAG_THRESHOLD_PX)return;
+    gesture.type='move';document.body.classList.add('torrent-col-moving');
+    $(`#torrentTable thead th[data-col="${gesture.key}"]`)?.classList.add('torrent-col-dragging');
+  }
+  event.preventDefault();
+  const cells=torrentHeaderCells();let index=cells.length;
+  for(let i=0;i<cells.length;i++){const rect=cells[i].getBoundingClientRect();if(event.clientX<rect.left+rect.width/2){index=i;break}}
+  gesture.target=index;
+  cells.forEach((th,i)=>{th.classList.toggle('torrent-col-drop-before',i===index);th.classList.toggle('torrent-col-drop-after',index===cells.length&&i===cells.length-1)});
+}
+function torrentHeaderPointerEnd(event){
+  const gesture=torrentHeaderGesture;torrentHeaderGesture=null;if(!gesture)return;
+  document.body.classList.remove('torrent-col-resizing','torrent-col-moving');
+  torrentHeaderCells().forEach(th=>th.classList.remove('torrent-col-dragging','torrent-col-drop-before','torrent-col-drop-after','torrent-col-resize-active'));
+  if(gesture.type==='resize'){torrentHeaderSuppressClickUntil=Date.now()+350;if(gesture.changed)saveTorrentLayout();return}
+  if(gesture.type==='move'){
+    torrentHeaderSuppressClickUntil=Date.now()+350;
+    if(event.type!=='pointercancel'&&Number.isInteger(gesture.target))moveTorrentColumn(gesture.key,gesture.target);
+  }
+}
+function applyTorrentColumnResize(key,startPx,delta){
+  // Widening takes space from the columns to the right, nearest first, until each reaches
+  // its minimum; narrowing gives the freed space to the immediate right-hand neighbour.
+  // Columns to the left never move, and the table width never changes.
+  const order=torrentLayout.order,index=order.indexOf(key),right=order.slice(index+1);if(index<0||!right.length)return false;
+  const total=order.reduce((sum,k)=>sum+startPx[k],0);if(total<=0)return false;
+  const next={...startPx},minA=Math.min(torrentColumnMinPx(key),startPx[key]);
+  if(delta>=0){
+    let need=delta;
+    for(const k of right){if(need<=0)break;const take=Math.max(0,Math.min(need,startPx[k]-Math.min(torrentColumnMinPx(k),startPx[k])));next[k]-=take;need-=take}
+    next[key]=startPx[key]+(delta-need);
+  }else{
+    const width=Math.max(minA,startPx[key]+delta);next[right[0]]+=startPx[key]-width;next[key]=width;
+  }
+  for(const k of order)torrentLayout.widths[k]=next[k]/total;
+  return true;
+}
+function moveTorrentColumn(key,index){
+  const from=torrentLayout.order.indexOf(key);if(from<0)return;
+  const order=torrentLayout.order.filter(k=>k!==key);
+  if(index>from)index--;
+  order.splice(Math.max(0,Math.min(order.length,index)),0,key);
+  if(order.join()===torrentLayout.order.join())return;
+  torrentLayout.order=order;saveTorrentLayout();render();
+  $(`#torrentTable thead th[data-col="${key}"]`)?.focus({preventScroll:true});
+}
+function resizeTorrentColumnBy(key,delta){
+  if(applyTorrentColumnResize(key,torrentColumnPixelWidths($('#torrentTable')?.closest('.table-wrap')),delta)){saveTorrentLayout();applyFixedTorrentColumnLayout()}
+}
+function torrentHeaderKeydown(event){
+  // Keyboard equivalents: Alt+Left/Right moves the focused column; Alt+Shift+Left/Right resizes it.
+  if(!event.altKey||!['ArrowLeft','ArrowRight'].includes(event.key)||!torrentDesktopLayout())return;
+  const th=event.target.closest('th[data-col]');if(!th)return;
+  event.preventDefault();event.stopPropagation();
+  const key=th.dataset.col,direction=event.key==='ArrowLeft'?-1:1;
+  if(event.shiftKey){resizeTorrentColumnBy(key,direction*TORRENT_KEYBOARD_RESIZE_PX);return}
+  const from=torrentLayout.order.indexOf(key),to=from+direction;
+  if(to<0||to>=torrentLayout.order.length)return;
+  moveTorrentColumn(key,direction>0?to+1:to);
+}
+function resetTorrentLayout({order=true,widths=true}={}){
+  const base=defaultTorrentLayout();
+  if(order)torrentLayout.order=base.order;
+  if(widths)torrentLayout.widths=base.widths;
+  saveTorrentLayout();render();
+}
+function showTorrentHeaderMenu(event){
+  if(!torrentDesktopLayout())return;
+  const menu=$('#torrentHeaderMenu');if(!menu)return;
+  event.preventDefault();
+  menu.innerHTML='<button type="button" data-layout="widths"><span>Reset column widths</span></button><button type="button" data-layout="order"><span>Reset column order</span></button><div class="menu-separator" role="separator"></div><button type="button" data-layout="all"><span>Reset columns</span></button>';
+  showMenu(menu,torrentMenuPointAnchor(event.clientX,event.clientY));
 }
 
 function esc(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -710,7 +878,7 @@ function bindUI(){if(bound)return;
   $('#search').value=state.search;$('#search').addEventListener('input',e=>{state.search=e.target.value.trim().toLowerCase();localStorage.tdSearch=state.search;render()});
   $('#serverSelect').addEventListener('change',async e=>{state.server=e.target.value;localStorage.tdServer=state.server;state.selected.clear();resetDetailPane();await refreshStatus();if(state.server!=='all')await loadMeta();renderNotificationBell();if($('#view-notifications')?.classList.contains('active'))renderNotifications()});
   $('#selectAll').addEventListener('change',e=>{visibleTorrents().forEach(t=>e.target.checked?state.selected.add(keyFor(t)):state.selected.delete(keyFor(t)));render()});
-  $('#torrentRows').addEventListener('click',rowClick);$('#torrentRows').addEventListener('change',rowChange);$('#torrentRows').addEventListener('contextmenu',rowContext);$('#torrentRows').addEventListener('pointerdown',rowPointerDown);$('#torrentRows').addEventListener('pointermove',rowPointerMove);$('#torrentRows').addEventListener('pointerup',rowPointerEnd);$('#torrentRows').addEventListener('pointercancel',rowPointerEnd);bindTorrentColumnHeaderUI();
+  $('#torrentRows').addEventListener('click',rowClick);$('#torrentRows').addEventListener('change',rowChange);$('#torrentRows').addEventListener('contextmenu',rowContext);$('#torrentRows').addEventListener('pointerdown',rowPointerDown);$('#torrentRows').addEventListener('pointermove',rowPointerMove);$('#torrentRows').addEventListener('pointerup',rowPointerEnd);$('#torrentRows').addEventListener('pointercancel',rowPointerEnd);bindTorrentColumnHeaderUI();bindTorrentColumnLayoutUI();
   $('#bulkbar').addEventListener('click',e=>{if(e.target.closest('[data-bulk-clear]')){state.selected.clear();render();return}const a=e.target.closest('[data-bulk]')?.dataset.bulk;if(a)bulkAction(a)});
   bindAddTorrentUI();$('#removeForm')?.addEventListener('submit',e=>{e.preventDefault();closeRemoveDialog({deleteFiles:!!$('#removeFiles')?.checked})});$$('[data-remove-cancel]').forEach(x=>x.addEventListener('click',()=>closeRemoveDialog(null)));
   $('#detailHandle').addEventListener('click',toggleDetailPane);$$('[data-detailtab]').forEach(x=>x.addEventListener('click',()=>{state.detailTab=x.dataset.detailtab;$$('[data-detailtab]').forEach(b=>b.classList.toggle('active',b===x));renderDetail()}));
@@ -891,8 +1059,8 @@ function emptyStateCopy(){
 }
 function swarmColumnValue(active,total){const connected=Math.max(0,Number(active)||0),available=Number(total);return Number.isFinite(available)&&available>=0?`${connected} (${Math.trunc(available)})`:String(connected)}
 function torrentSubtitle(t){const parts=[];if(t._server_name)parts.push(t._server_name);return parts.join(' · ')}
-function render(){const list=visibleTorrents();$('#torrentRows').innerHTML=list.map(rowHtml).join('');applyFixedTorrentColumnLayout();syncTorrentSortHeaders();const empty=$('#empty');empty.classList.toggle('hidden',list.length>0);if(!list.length){const [title,text]=emptyStateCopy();$('#emptyTitle').textContent=title;$('#emptyText').textContent=text}$('#selectedCount').textContent=state.selected.size;$('#bulkbar').classList.toggle('hidden',!state.selected.size);$('#selectAll').checked=!!list.length&&list.every(t=>state.selected.has(keyFor(t)));syncTorrentWorkspaceLayout();requestAnimationFrame(syncMobileBulkbarOffset)}
-function rowHtml(t){const pct=Math.max(0,Math.min(100,Number(t.progress||0)*100)),[label,cls]=stateInfo(t),sub=torrentSubtitle(t),tags=String(t.tags||'').trim();return`<tr class="${state.detail&&state.detail.server===(t._server_id||state.server)&&state.detail.hash===t.hash?'torrent-detail-selected':''}" data-key="${esc(keyFor(t))}" data-hash="${esc(t.hash)}" data-server="${esc(t._server_id||state.server)}"><td class="check"><input class="rowcheck" type="checkbox" ${state.selected.has(keyFor(t))?'checked':''}></td><td data-col="name"><div class="torrent-name" title="${esc(t.name)}">${esc(t.name)}</div><div class="torrent-sub${sub?'':' hidden'}">${esc(sub)}</div></td><td class="mobile-grid" data-col="size" data-label="Size"><span class="mono">${bytes(t.size)}</span></td><td class="mobile-grid" data-col="state" data-label="Status"><span class="state ${cls}">${esc(uiText(label))}</span></td><td class="progress-cell" data-col="progress"><div class="progress-top"><span>${pct.toFixed(1)}%</span><span>${bytes(t.amount_left)} Left</span></div><div class="track"><div class="fill" style="width:${pct}%"></div></div></td><td class="mobile-grid" data-col="seeds" data-label="Seeds"><span class="mono">${esc(swarmColumnValue(t.num_seeds,t.num_complete))}</span></td><td class="mobile-grid" data-col="peers" data-label="Peers"><span class="mono">${esc(swarmColumnValue(t.num_leechs,t.num_incomplete))}</span></td><td class="mobile-grid" data-col="down" data-label="Download"><span class="mono">${speed(t.dlspeed||0)}</span></td><td class="mobile-grid" data-col="up" data-label="Upload"><span class="mono">${speed(t.upspeed||0)}</span></td><td class="mobile-grid" data-col="eta" data-label="ETA"><span class="mono">${eta(t.eta)}</span></td><td class="mobile-grid" data-col="ratio" data-label="Ratio"><span class="mono">${Number(t.ratio||0).toFixed(2)}</span></td><td class="mobile-grid" data-col="category" data-label="Category"><span class="torrent-column-text" title="${esc(t.category||'')}">${esc(t.category||'—')}</span></td><td class="mobile-grid" data-col="tags" data-label="Tags"><span class="torrent-column-text" title="${esc(tags)}">${esc(tags||'—')}</span></td></tr>`}
+function render(){const list=visibleTorrents();const order=torrentColumnOrder();$('#torrentRows').innerHTML=list.map(t=>rowHtml(t,order)).join('');applyFixedTorrentColumnLayout();syncTorrentSortHeaders();const empty=$('#empty');empty.classList.toggle('hidden',list.length>0);if(!list.length){const [title,text]=emptyStateCopy();$('#emptyTitle').textContent=title;$('#emptyText').textContent=text}$('#selectedCount').textContent=state.selected.size;$('#bulkbar').classList.toggle('hidden',!state.selected.size);$('#selectAll').checked=!!list.length&&list.every(t=>state.selected.has(keyFor(t)));syncTorrentWorkspaceLayout();requestAnimationFrame(syncMobileBulkbarOffset)}
+function rowHtml(t,order=torrentColumnOrder()){const pct=Math.max(0,Math.min(100,Number(t.progress||0)*100)),[label,cls]=stateInfo(t),sub=torrentSubtitle(t),tags=String(t.tags||'').trim();const cells={name:`<td data-col="name"><div class="torrent-name" title="${esc(t.name)}">${esc(t.name)}</div><div class="torrent-sub${sub?'':' hidden'}">${esc(sub)}</div></td>`,size:`<td class="mobile-grid" data-col="size" data-label="Size"><span class="mono">${bytes(t.size)}</span></td>`,state:`<td class="mobile-grid" data-col="state" data-label="Status"><span class="state ${cls}">${esc(uiText(label))}</span></td>`,progress:`<td class="progress-cell" data-col="progress"><div class="progress-top"><span>${pct.toFixed(1)}%</span><span>${bytes(t.amount_left)} Left</span></div><div class="track"><div class="fill" style="width:${pct}%"></div></div></td>`,seeds:`<td class="mobile-grid" data-col="seeds" data-label="Seeds"><span class="mono">${esc(swarmColumnValue(t.num_seeds,t.num_complete))}</span></td>`,peers:`<td class="mobile-grid" data-col="peers" data-label="Peers"><span class="mono">${esc(swarmColumnValue(t.num_leechs,t.num_incomplete))}</span></td>`,down:`<td class="mobile-grid" data-col="down" data-label="Download"><span class="mono">${speed(t.dlspeed||0)}</span></td>`,up:`<td class="mobile-grid" data-col="up" data-label="Upload"><span class="mono">${speed(t.upspeed||0)}</span></td>`,eta:`<td class="mobile-grid" data-col="eta" data-label="ETA"><span class="mono">${eta(t.eta)}</span></td>`,ratio:`<td class="mobile-grid" data-col="ratio" data-label="Ratio"><span class="mono">${Number(t.ratio||0).toFixed(2)}</span></td>`,category:`<td class="mobile-grid" data-col="category" data-label="Category"><span class="torrent-column-text" title="${esc(t.category||'')}">${esc(t.category||'—')}</span></td>`,tags:`<td class="mobile-grid" data-col="tags" data-label="Tags"><span class="torrent-column-text" title="${esc(tags)}">${esc(tags||'—')}</span></td>`};return`<tr class="${state.detail&&state.detail.server===(t._server_id||state.server)&&state.detail.hash===t.hash?'torrent-detail-selected':''}" data-key="${esc(keyFor(t))}" data-hash="${esc(t.hash)}" data-server="${esc(t._server_id||state.server)}"><td class="check"><input class="rowcheck" type="checkbox" ${state.selected.has(keyFor(t))?'checked':''}></td>${order.map(key=>cells[key]).join('')}</tr>`}
 function rowChange(e){if(!e.target.classList.contains('rowcheck'))return;const tr=e.target.closest('tr'),k=tr.dataset.key;e.target.checked?state.selected.add(k):state.selected.delete(k);render()}
 function rowClick(e){if(Date.now()<torrentLongPressSuppressClickUntil){e.preventDefault();e.stopPropagation();return}const tr=e.target.closest('tr');if(!tr)return;if(e.target.closest('.rowcheck'))return;const server=tr.dataset.server,hash=tr.dataset.hash;if(state.detail?.server===server&&state.detail?.hash===hash){resetDetailPane();return}openDetail(server,hash)}
 const TORRENT_LONG_PRESS_MS=550,TORRENT_LONG_PRESS_MOVE_PX=12;

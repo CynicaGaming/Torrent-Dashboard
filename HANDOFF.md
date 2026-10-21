@@ -7,40 +7,45 @@
 This handoff is intentionally portable across public forks. Verify the current checkout's Git remote, branch, and open work before using upstream references as instructions.
 
 - Canonical upstream: `CynicaGaming/TorrentDashboard`
-- Last documented upstream build: **v0.5.165** (prerelease)
+- Last documented upstream build: **v0.5.166** (prerelease)
 
 ## Last known-good state
 
-Jellyfin 12 disabled the legacy X-Emby-Token authentication header by default, so the Jellyfin integration received HTTP 401. Torrent Dashboard now authenticates with the standard Authorization header, which Jellyfin has accepted since 10.8.
+Torrent-list columns can be rearranged by dragging their headers and resized by dragging their right edge, while the table always fits the torrent viewport without a horizontal scrollbar.
 
 The released-state details and recent history are in `PROJECT_STATE.md`; architectural constraints are in `ARCHITECTURE.md`.
 
 ## Active development intent
 
 - Status: **release-candidate**
-- Objective: **Publish v0.5.165 restoring Jellyfin 12 connections**
-- Why: Jellyfin 12 disabled the legacy X-Emby-Token header by default, so every Jellyfin integration request returned HTTP 401.
+- Objective: **Publish v0.5.166 with movable and resizable torrent columns**
+- Why: Users want to arrange the torrent list to the information they monitor and widen columns whose labels or values are truncated.
 
 ### Acceptance criteria
 
-- Jellyfin requests use the Authorization: MediaBrowser header and never send X-Emby-Token.
-- Jellyfin status, scheduled tasks, and library refresh succeed against Jellyfin 12.x and 10.8+ servers.
-- The full source matrix, including Windows, source updater build, and compiled Windows smoke tests pass.
-- v0.5.165 publishes source and Windows updater packages with SHA-256 digests.
+- Dragging a header past a 6 px threshold reorders the column; a plain click still sorts.
+- Dragging a header's right-edge divider resizes only that boundary and never creates a horizontal scrollbar.
+- Layouts persist per browser across refreshes and reloads, and can be reset from the header context menu.
+- Mobile cards keep the default field order.
+- The full source matrix, source updater build, and compiled Windows smoke tests pass.
+- v0.5.166 publishes source and Windows updater packages with SHA-256 digests.
 
 ### Decisions already made
 
-- Use only the standard Authorization header rather than also sending legacy headers, so the integration does not depend on Jellyfin's EnableLegacyAuthorization setting.
+- Keep the table fitted to the viewport: resizing redistributes width among columns rather than growing the table, avoiding the v0.5.97-0.5.100 horizontal-overflow tradeoffs.
+- Columns to the left of a resized boundary never move.
+- Mobile cards ignore the desktop column order.
 
 ### Expected areas of change
 
-- `src/torrent_dashboard/jellyfin.py`
-- `src/torrent_dashboard/__init__.py`
 - `static/app.js`
+- `static/app.css`
 - `static/index.html`
 - `static/sw.js`
-- `tests/test_jellyfin.py`
-- `tests/test_review_hardening.py`
+- `src/torrent_dashboard/__init__.py`
+- `release_tools/validate_ui_strings.py`
+- `DESIGN_LANGUAGE.md`
+- `TESTING.md`
 - `release_notes/releases.json`
 - `development/current.json`
 
@@ -50,11 +55,11 @@ None currently recorded.
 
 ### Explicitly out of scope
 
-- No changes to other integrations, authentication modes, or updater behavior in this release.
+- No column hiding or new columns in this release.
 
 ## Exact next action
 
-Run full validation and Windows packaging; if green, publish and verify the complete updater-visible v0.5.165 release.
+Run full validation and Windows packaging; if green, publish and verify the complete updater-visible v0.5.166 release.
 
 ## Resume checklist
 

@@ -124,21 +124,26 @@ Add Torrent keeps selection controls in one stable checkbox column so scanning a
 For the persistent Torrent details dock, clicking the torrent whose details are already selected clears that detail context and returns the dock to its no-selection shell, expanded on desktop and collapsed on mobile. Selecting a different torrent replaces the context and expands the dock normally. The detail context must also be reconciled against each refreshed torrent list: if the selected server/hash no longer exists, clear the stale detail selection automatically and return to the same no-selection shell. The disclosure bar is the single selection-identity surface; do not repeat the torrent title/hash in a second header immediately above the detail tabs.
 
 
-## Fixed torrent columns
+## Customizable torrent columns
 
-For the current desktop/tablet interaction model, the torrent list uses one fixed visible column set rather than exposing per-browser column customization. This deliberately trades configurability for predictable geometry while the table interaction layer is simplified.
+On desktop/tablet (above the 820 px mobile breakpoint) users can rearrange and resize the torrent-list columns directly in the table header. The layout is a browser-local presentation preference, not shared configuration.
 
-- The visible data-column order is **Name, Size, Status, Progress, Seeds, Peers, Down, Up, ETA, Ratio, Category, Tags**. The selection checkbox remains the only fixed 40 px table rail; torrent commands are contextual rather than occupying a permanent Actions column.
-- Desktop/tablet widths are deterministic proportions of the available data area after the fixed selection rail is reserved: Name 29%, Size 5%, Status 7%, Progress 20%, Seeds 4.5%, Peers 4.5%, Down 4.5%, Up 4.5%, ETA 3.5%, Ratio 4.5%, Category 6.5%, Tags 6.5%.
-- Those proportions are recalculated from the live torrent viewport when the window changes size. The desktop table remains exactly viewport-width, so this fixed layout must not introduce a horizontal scrollbar.
-- Header labels follow their body alignment. Size, Seeds, Peers, Down, Up, ETA, and Ratio are right-aligned; other data columns are left-aligned. Header clicks and keyboard activation continue to sort, with the active direction shown by the locally embedded chevron.
-- Column resize handles, drag reorder, header visibility menus, Reset columns, spacer geometry, and browser-local `tdColumns` width/order/visibility persistence are intentionally inactive in this fixed-layout phase. Existing `tdColumns` state is discarded during migration so an old customized layout cannot leak into the fixed table.
-- Name and other text cells use only their assigned cell width for ellipsis. There is no historical independent Name maximum-width cap.
-- Mobile keeps the existing card presentation; the fixed desktop width calculation is cleared at the mobile breakpoint.
+- The column set is fixed: **Name, Size, Status, Progress, Seeds, Peers, Down, Up, ETA, Ratio, Category, Tags**, which is also the default order. Columns cannot be hidden. The selection checkbox is a fixed 40 px rail on the far left and is never moved or resized; torrent commands are contextual rather than occupying a permanent Actions column.
+- Default widths are proportions of the data area after the selection rail is reserved: Name 29%, Size 5%, Status 7%, Progress 20%, Seeds 4.5%, Peers 4.5%, Down 4.5%, Up 4.5%, ETA 3.5%, Ratio 4.5%, Category 6.5%, Tags 6.5%.
+- **Fit-to-viewport invariant:** widths are stored as shares of the data area (not pixels) and recalculated from the live torrent viewport, so the table is always exactly viewport-width and must not introduce a horizontal scrollbar at any width or after any customization.
+- **Reorder:** press a header and drag it horizontally past the 6 px movement threshold; an accent bar shows the drop position and the column (with its width) moves on release. A press that does not move is a normal click and sorts. Alt+Left/Right moves the focused header.
+- **Resize:** drag the thin divider at a header's right edge. Only the grabbed boundary moves and columns to its left never change. Widening takes space from the columns to the right, nearest first, down to each column's minimum (Name 140 px, Progress 96 px, Status 72 px, others 52 px); narrowing gives the freed space to the right-hand neighbour. The last column has no divider because its right edge is the table edge. Alt+Shift+Left/Right resizes the focused header by 16 px.
+- A completed drag or resize must never also trigger a sort.
+- **Reset:** double-click a divider to reset widths; right-click the header for Reset column widths, Reset column order, or Reset columns.
+- The layout is stored in browser-local `tdTorrentLayout` as `{order, widths}`. Invalid, partial, or unknown entries are normalized on load (missing columns return at their default position, widths are renormalized to sum to 1). The retired v0.5.95–0.5.100 `tdColumns` key is still discarded on load.
+- Live one-second refreshes render cells in the saved order, so polling cannot reset or jump the layout.
+- Header labels follow their body alignment. Size, Seeds, Peers, Down, Up, ETA, and Ratio are right-aligned; other data columns are left-aligned. Header clicks and keyboard activation sort, with the active direction shown by the locally embedded chevron.
+- Name and other text cells use only their assigned cell width for ellipsis.
+- Mobile keeps the existing card presentation in the default field order regardless of the saved desktop layout; desktop widths are cleared at the mobile breakpoint and crossing the breakpoint re-renders immediately.
 - Mobile metadata rows use a consistent left-label/right-value grid. Desktop numeric-column text alignment must not leak into mobile pseudo-labels or shift labels toward the card center.
 - Torrent row commands use one shared context menu: right-click opens it on pointer-based desktop interfaces, while a deliberate long press opens it on touch. Touch movement cancels the pending long press so normal vertical scrolling is not intercepted.
 - On mobile, the bulk-selection overlay must clear the current Torrent details pane rather than sharing its bottom stack. Its bottom offset follows the rendered detail pane so selection actions remain fully visible in both collapsed and expanded detail states.
-- Sorting remains browser-local in `tdSort`. The default may still be Added descending even though Added is not one of the visible fixed columns.
+- Sorting remains browser-local in `tdSort`. The default may still be Added descending even though Added is not one of the visible columns.
 
 ### Compact mobile torrent cards
 

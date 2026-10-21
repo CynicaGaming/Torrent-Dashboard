@@ -6,16 +6,22 @@
 
 ## Current baseline
 
-- Latest documented build: **v0.5.165** (prerelease)
+- Latest documented build: **v0.5.166** (prerelease)
 - Canonical upstream: `CynicaGaming/TorrentDashboard`
 
 ### Latest release summary
 
-Jellyfin 12 disabled the legacy X-Emby-Token authentication header by default, so the Jellyfin integration received HTTP 401. Torrent Dashboard now authenticates with the standard Authorization header, which Jellyfin has accepted since 10.8.
+Torrent-list columns can be rearranged by dragging their headers and resized by dragging their right edge, while the table always fits the torrent viewport without a horizontal scrollbar.
+
+## Architecture state
+
+- Column layout is a browser-local presentation preference applied through a table colgroup instead of per-cell inline widths.
 
 ## Current engineering decisions
 
-- Use only the standard Authorization header rather than also sending legacy headers, so the integration does not depend on Jellyfin's EnableLegacyAuthorization setting.
+- Keep the table fitted to the viewport: resizing redistributes width among columns rather than growing the table, avoiding the v0.5.97-0.5.100 horizontal-overflow tradeoffs.
+- Columns to the left of a resized boundary never move.
+- Mobile cards ignore the desktop column order.
 
 ## Development principles
 
@@ -27,6 +33,15 @@ Jellyfin 12 disabled the legacy X-Emby-Token authentication header by default, s
 - Keep public development continuity portable across forks; label canonical repository/branch/PR references as upstream context rather than local identity.
 
 ## Recent work
+
+### v0.5.166 — Movable and resizable torrent columns
+
+Torrent-list columns can be rearranged by dragging their headers and resized by dragging their right edge, while the table always fits the torrent viewport without a horizontal scrollbar.
+
+- Drag a column header to move it; an accent bar shows where it will land. A plain click still sorts.
+- Drag the divider on a header's right edge to resize. Only that boundary moves: widening takes space from the columns to the right, nearest first, and narrowing gives it to the right-hand neighbour.
+- Right-click the header to reset column widths, order, or both; double-click a divider to reset widths.
+- Layouts are saved per browser and survive live refreshes and reloads.
 
 ### v0.5.165 — Restore Jellyfin 12 connections
 
@@ -60,24 +75,15 @@ Makes account creation visibly distinct from sign-in and manages Pending registr
 - Removes the separate Pending registrations settings card and shows Pending accounts directly in the normal Users accordion list.
 - Marks unapproved accounts with a Pending badge and keeps Approve and Reject actions inside that user entry.
 
-### v0.5.161 — Simplify registration and Pending status
-
-Refines self-registration with a simpler login entry point, a username-and-password-only registration form, and concise Pending status language.
-
-- Moves Create an account beneath the Sign in button instead of presenting Register as a top-level access tab.
-- Simplifies registration to Username and Password; profile details can be completed after the account is approved and the user signs in.
-- Shortens the account state label from Pending approval to Pending.
-- Pending users are told that administrator approval is still required before sign-in.
-
 ## What to do next
 
-1. **Verify Jellyfin 12 integration after update** — Update, open the Jellyfin integration, and confirm server status, scheduled tasks, and library refresh succeed against a Jellyfin 12.x server.
+1. **Verify column customization on real browsers** — Reorder and resize columns in Chrome, Edge, Firefox, and Safari at several window widths; confirm no horizontal scrollbar and that layouts persist.
 
 ## Known issues
 
+- Columns cannot be hidden; at narrow desktop widths some compact headers are truncated until widened.
 - Backup encryption remains opt-in; unencrypted portable backups can contain saved client and integration credentials and should be stored securely.
 - Windows executables are not code-signed yet.
-- qBittorrent and integration API keys are stored in plain text in config.json.
 
 ## Handoff instructions for a new development session
 
