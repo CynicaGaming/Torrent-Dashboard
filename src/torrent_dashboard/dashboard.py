@@ -953,8 +953,9 @@ class QBitClient:
             if hit and now - hit[0] < ttl:
                 return hit[1]
         value = loader()
-        with self.lock:
-            self._value_cache[key] = (now, value)
+        if value is not None:  # Retry failed lookups on the next pass.
+            with self.lock:
+                self._value_cache[key] = (now, value)
         return value
 
     def invalidate_cache(self):
