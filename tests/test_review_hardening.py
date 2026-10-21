@@ -1,5 +1,6 @@
 """Regression tests for the reliability, performance, and disclosure fixes."""
 
+from contextlib import closing
 from email.message import Message
 import io
 import json
@@ -27,7 +28,7 @@ class HistoryWriteThrottleTests(unittest.TestCase):
         self.store = HistoryStore(Path(self.temp.name) / "history.sqlite3")
 
     def count(self, table):
-        with sqlite3.connect(self.store.path) as db:
+        with closing(sqlite3.connect(self.store.path)) as db:
             return db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
     def test_unchanged_torrents_are_not_rewritten_every_pass(self):
@@ -46,7 +47,7 @@ class HistoryWriteThrottleTests(unittest.TestCase):
         self.store.sample("s", [torrent("a", progress=1.0, completion_on=99)], {}, None, every=3600)
         events = [e for e in self.store.events() if e["event"] == "completed"]
         self.assertEqual(len(events), 1)
-        with sqlite3.connect(self.store.path) as db:
+        with closing(sqlite3.connect(self.store.path)) as db:
             self.assertEqual(db.execute("SELECT completion_on FROM torrent_history").fetchone()[0], 99)
 
     def test_cleanup_is_throttled(self):
