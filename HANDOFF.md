@@ -7,45 +7,40 @@
 This handoff is intentionally portable across public forks. Verify the current checkout's Git remote, branch, and open work before using upstream references as instructions.
 
 - Canonical upstream: `CynicaGaming/TorrentDashboard`
-- Last documented upstream build: **v0.5.164** (prerelease)
+- Last documented upstream build: **v0.5.165** (prerelease)
 
 ## Last known-good state
 
-Fixes reliability, performance, and information-disclosure issues found in a code review: a stalled HTTPS client can no longer freeze the dashboard, the status collector can no longer die permanently, and history writes and qBittorrent polling load are greatly reduced.
+Jellyfin 12 disabled the legacy X-Emby-Token authentication header by default, so the Jellyfin integration received HTTP 401. Torrent Dashboard now authenticates with the standard Authorization header, which Jellyfin has accepted since 10.8.
 
 The released-state details and recent history are in `PROJECT_STATE.md`; architectural constraints are in `ARCHITECTURE.md`.
 
 ## Active development intent
 
 - Status: **release-candidate**
-- Objective: **Publish v0.5.164 with collector, HTTPS, history-write, and polling hardening**
-- Why: A code review found that a stalled HTTPS client could freeze the dashboard, the collector could die permanently, and history was written for every torrent every second.
+- Objective: **Publish v0.5.165 restoring Jellyfin 12 connections**
+- Why: Jellyfin 12 disabled the legacy X-Emby-Token header by default, so every Jellyfin integration request returned HTTP 401.
 
 ### Acceptance criteria
 
-- A stalled TLS client does not delay other HTTPS requests.
-- The collector survives unexpected errors and malformed settings.
-- Per-torrent history rows are written once per sample interval; completion events remain immediate.
-- Notifications are delivered without blocking the collector.
-- Unauthenticated setup and health endpoints no longer disclose network or process details after setup.
-- The full source matrix, source updater build, and compiled Windows smoke tests pass.
-- v0.5.164 publishes source and Windows updater packages with SHA-256 digests.
+- Jellyfin requests use the Authorization: MediaBrowser header and never send X-Emby-Token.
+- Jellyfin status, scheduled tasks, and library refresh succeed against Jellyfin 12.x and 10.8+ servers.
+- The full source matrix, including Windows, source updater build, and compiled Windows smoke tests pass.
+- v0.5.165 publishes source and Windows updater packages with SHA-256 digests.
 
 ### Decisions already made
 
-- Hidden tabs keep polling at a reduced rate so browser completion notifications continue to work.
-- Completion events remain immediate; only unchanged per-torrent history rows are deferred to the sample interval.
+- Use only the standard Authorization header rather than also sending legacy headers, so the integration does not depend on Jellyfin's EnableLegacyAuthorization setting.
 
 ### Expected areas of change
 
-- `src/torrent_dashboard/dashboard.py`
-- `src/torrent_dashboard/history.py`
+- `src/torrent_dashboard/jellyfin.py`
 - `src/torrent_dashboard/__init__.py`
 - `static/app.js`
 - `static/index.html`
 - `static/sw.js`
+- `tests/test_jellyfin.py`
 - `tests/test_review_hardening.py`
-- `release_tools/validate_ui_strings.py`
 - `release_notes/releases.json`
 - `development/current.json`
 
@@ -55,11 +50,11 @@ None currently recorded.
 
 ### Explicitly out of scope
 
-- No changes to authentication modes, roles, registration, backup format, or updater behavior in this release.
+- No changes to other integrations, authentication modes, or updater behavior in this release.
 
 ## Exact next action
 
-Run full validation and Windows packaging; if green, publish and verify the complete updater-visible v0.5.164 release.
+Run full validation and Windows packaging; if green, publish and verify the complete updater-visible v0.5.165 release.
 
 ## Resume checklist
 

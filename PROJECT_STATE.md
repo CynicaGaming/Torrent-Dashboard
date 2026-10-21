@@ -6,21 +6,16 @@
 
 ## Current baseline
 
-- Latest documented build: **v0.5.164** (prerelease)
+- Latest documented build: **v0.5.165** (prerelease)
 - Canonical upstream: `CynicaGaming/TorrentDashboard`
 
 ### Latest release summary
 
-Fixes reliability, performance, and information-disclosure issues found in a code review: a stalled HTTPS client can no longer freeze the dashboard, the status collector can no longer die permanently, and history writes and qBittorrent polling load are greatly reduced.
-
-## Architecture state
-
-- Completion notifications are sent by a single bounded background dispatcher rather than inline in the collector loop.
+Jellyfin 12 disabled the legacy X-Emby-Token authentication header by default, so the Jellyfin integration received HTTP 401. Torrent Dashboard now authenticates with the standard Authorization header, which Jellyfin has accepted since 10.8.
 
 ## Current engineering decisions
 
-- Hidden tabs keep polling at a reduced rate so browser completion notifications continue to work.
-- Completion events remain immediate; only unchanged per-torrent history rows are deferred to the sample interval.
+- Use only the standard Authorization header rather than also sending legacy headers, so the integration does not depend on Jellyfin's EnableLegacyAuthorization setting.
 
 ## Development principles
 
@@ -32,6 +27,13 @@ Fixes reliability, performance, and information-disclosure issues found in a cod
 - Keep public development continuity portable across forks; label canonical repository/branch/PR references as upstream context rather than local identity.
 
 ## Recent work
+
+### v0.5.165 — Restore Jellyfin 12 connections
+
+Jellyfin 12 disabled the legacy X-Emby-Token authentication header by default, so the Jellyfin integration received HTTP 401. Torrent Dashboard now authenticates with the standard Authorization header, which Jellyfin has accepted since 10.8.
+
+- Jellyfin status, scheduled tasks, and library refresh work again with Jellyfin 12.x servers.
+- Existing Jellyfin API keys keep working; no settings changes are required.
 
 ### v0.5.164 — Harden live status, HTTPS, and history writes
 
@@ -67,18 +69,9 @@ Refines self-registration with a simpler login entry point, a username-and-passw
 - Shortens the account state label from Pending approval to Pending.
 - Pending users are told that administrator approval is still required before sign-in.
 
-### v0.5.160 — Self-registration with administrator approval
-
-Adds public account registration while keeping access administrator-controlled: new accounts remain pending until approved from Settings → Users.
-
-- Adds a Register tab beside Sign in and Recovery with username, optional profile details, and password fields.
-- New registrations are stored as Standard users in Pending approval state and cannot create sessions.
-- Settings → Users now shows a Pending registrations queue with Approve and Reject actions.
-- A pending user who enters the correct credentials is told that the account is waiting for administrator approval.
-
 ## What to do next
 
-1. **Verify HTTPS and live status after update** — Update an HTTPS-enabled install, confirm live status refreshes, completion notifications arrive, and history charts continue to populate.
+1. **Verify Jellyfin 12 integration after update** — Update, open the Jellyfin integration, and confirm server status, scheduled tasks, and library refresh succeed against a Jellyfin 12.x server.
 
 ## Known issues
 

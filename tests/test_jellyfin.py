@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import unittest
 
 from torrent_dashboard.jellyfin import (
@@ -12,6 +13,15 @@ from torrent_dashboard.jellyfin import (
     stop_jellyfin_scheduled_task,
 )
 
+
+
+def _token(request):
+    """Return the API key sent in the Jellyfin 12-compatible Authorization header."""
+    assert request.get_header("X-emby-token") is None, "legacy X-Emby-Token header must not be sent"
+    header = request.get_header("Authorization") or ""
+    assert header.startswith("MediaBrowser "), header
+    match = re.search(r'Token="((?:[^"\\]|\\.)*)"', header)
+    return match.group(1) if match else None
 
 class FakeResponse:
     def __init__(self, payload=None):
@@ -44,7 +54,7 @@ class JellyfinIntegrationTests(unittest.TestCase):
         calls = []
 
         def opener(request, timeout=0):
-            calls.append((request.full_url, request.get_method(), request.headers.get("X-emby-token"), timeout))
+            calls.append((request.full_url, request.get_method(), _token(request), timeout))
             if request.full_url.endswith("/System/Info"):
                 return FakeResponse({
                     "ServerName": "Living Room Jellyfin",
@@ -86,7 +96,7 @@ class JellyfinIntegrationTests(unittest.TestCase):
         calls = []
 
         def opener(request, timeout=0):
-            calls.append((request.full_url, request.get_method(), request.headers.get("X-emby-token"), timeout))
+            calls.append((request.full_url, request.get_method(), _token(request), timeout))
             if request.full_url.endswith("/ScheduledTasks?isHidden=false"):
                 return FakeResponse([
                     {
@@ -132,7 +142,7 @@ class JellyfinIntegrationTests(unittest.TestCase):
         calls = []
 
         def opener(request, timeout=0):
-            calls.append((request.full_url, request.get_method(), request.headers.get("X-emby-token"), timeout))
+            calls.append((request.full_url, request.get_method(), _token(request), timeout))
             return FakeResponse([
                 {
                     "Id": "task-plugin",
@@ -171,7 +181,7 @@ class JellyfinIntegrationTests(unittest.TestCase):
         calls = []
 
         def opener(request, timeout=0):
-            calls.append((request.full_url, request.get_method(), request.headers.get("X-emby-token"), timeout))
+            calls.append((request.full_url, request.get_method(), _token(request), timeout))
             return FakeResponse()
 
         started = start_jellyfin_scheduled_task(self.item(), "plugin task/1", opener=opener)
@@ -183,6 +193,14 @@ class JellyfinIntegrationTests(unittest.TestCase):
         self.assertEqual(calls[1][0], calls[0][0])
         self.assertEqual(calls[1][1], "DELETE")
         self.assertTrue(all(call[2] == "secret-key" for call in calls))
+
+class JellyfinAuthorizationHeaderTests(unittest.TestCase):
+    def test_header_uses_mediabrowser_scheme_and_escapes_values(self):
+        from torrent_dashboard.jellyfin import jellyfin_authorization_header
+        header = jellyfin_authorization_header('ab"c\\d')
+        self.assertTrue(header.startswith('MediaBrowser Client="Torrent Dashboard"'))
+        self.assertIn('Token="ab\\"c\\\\d"', header)
+        self.assertIn('DeviceId="torrent-dashboard"', header)
 
 
 if __name__ == "__main__":

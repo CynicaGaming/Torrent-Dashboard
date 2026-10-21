@@ -1,36 +1,31 @@
 {
   "schema": 1,
   "status": "release-candidate",
-  "objective": "Publish v0.5.164 with collector, HTTPS, history-write, and polling hardening",
-  "why": "A code review found that a stalled HTTPS client could freeze the dashboard, the collector could die permanently, and history was written for every torrent every second.",
+  "objective": "Publish v0.5.165 restoring Jellyfin 12 connections",
+  "why": "Jellyfin 12 disabled the legacy X-Emby-Token header by default, so every Jellyfin integration request returned HTTP 401.",
   "acceptance_criteria": [
-    "A stalled TLS client does not delay other HTTPS requests.",
-    "The collector survives unexpected errors and malformed settings.",
-    "Per-torrent history rows are written once per sample interval; completion events remain immediate.",
-    "Notifications are delivered without blocking the collector.",
-    "Unauthenticated setup and health endpoints no longer disclose network or process details after setup.",
-    "The full source matrix, source updater build, and compiled Windows smoke tests pass.",
-    "v0.5.164 publishes source and Windows updater packages with SHA-256 digests."
+    "Jellyfin requests use the Authorization: MediaBrowser header and never send X-Emby-Token.",
+    "Jellyfin status, scheduled tasks, and library refresh succeed against Jellyfin 12.x and 10.8+ servers.",
+    "The full source matrix, including Windows, source updater build, and compiled Windows smoke tests pass.",
+    "v0.5.165 publishes source and Windows updater packages with SHA-256 digests."
   ],
   "decisions": [
-    "Hidden tabs keep polling at a reduced rate so browser completion notifications continue to work.",
-    "Completion events remain immediate; only unchanged per-torrent history rows are deferred to the sample interval."
+    "Use only the standard Authorization header rather than also sending legacy headers, so the integration does not depend on Jellyfin's EnableLegacyAuthorization setting."
   ],
   "files": [
-    "src/torrent_dashboard/dashboard.py",
-    "src/torrent_dashboard/history.py",
+    "src/torrent_dashboard/jellyfin.py",
     "src/torrent_dashboard/__init__.py",
     "static/app.js",
     "static/index.html",
     "static/sw.js",
+    "tests/test_jellyfin.py",
     "tests/test_review_hardening.py",
-    "release_tools/validate_ui_strings.py",
     "release_notes/releases.json",
     "development/current.json"
   ],
   "blockers": [],
   "out_of_scope": [
-    "No changes to authentication modes, roles, registration, backup format, or updater behavior in this release."
+    "No changes to other integrations, authentication modes, or updater behavior in this release."
   ],
-  "next_action": "Run full validation and Windows packaging; if green, publish and verify the complete updater-visible v0.5.164 release."
+  "next_action": "Run full validation and Windows packaging; if green, publish and verify the complete updater-visible v0.5.165 release."
 }

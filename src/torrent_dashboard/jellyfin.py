@@ -7,6 +7,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from torrent_dashboard import __version__
+
 MAX_JELLYFIN_RESPONSE_BYTES = 2_000_000
 DEFAULT_JELLYFIN_TIMEOUT = 7
 
@@ -43,13 +45,35 @@ def _jellyfin_connection(item):
     return url, api_key
 
 
+def _header_value(value):
+    return str(value).replace("\\", "\\\\").replace('"', '\\"')
+
+
+def jellyfin_authorization_header(api_key):
+    """Build the ``Authorization: MediaBrowser ...`` header value.
+
+    Jellyfin 12 disables the legacy ``X-Emby-Token``/``X-Emby-Authorization``
+    headers and ``api_key`` query parameter by default, so those requests get
+    HTTP 401. The ``Authorization`` header form has been accepted since
+    Jellyfin 10.8, so it works for both older and current servers.
+    """
+    fields = (
+        ("Client", "Torrent Dashboard"),
+        ("Device", "Torrent Dashboard"),
+        ("DeviceId", "torrent-dashboard"),
+        ("Version", __version__),
+        ("Token", api_key),
+    )
+    return "MediaBrowser " + ", ".join(f'{name}="{_header_value(value)}"' for name, value in fields)
+
+
 def _jellyfin_request(item, endpoint, *, method="GET", expect_json=True, opener=None, timeout=DEFAULT_JELLYFIN_TIMEOUT):
     url, api_key = _jellyfin_connection(item)
     opener = opener or urllib.request.urlopen
     request = urllib.request.Request(
         url + endpoint,
         headers={
-            "X-Emby-Token": api_key,
+            "Authorization": jellyfin_authorization_header(api_key),
             "Accept": "application/json",
         },
         method=method,
@@ -230,6 +254,7 @@ def refresh_jellyfin_libraries(item, *, opener=None):
 
 __all__ = [
     "find_jellyfin_integration",
+    "jellyfin_authorization_header",
     "jellyfin_libraries",
     "jellyfin_library_scan_task",
     "jellyfin_overview",

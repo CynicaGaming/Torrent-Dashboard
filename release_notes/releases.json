@@ -12,6 +12,45 @@
   },
   "releases": [
     {
+      "version": "0.5.165",
+      "date": "2026-10-21",
+      "status": "prerelease",
+      "title": "Restore Jellyfin 12 connections",
+      "summary": "Jellyfin 12 disabled the legacy X-Emby-Token authentication header by default, so the Jellyfin integration received HTTP 401. Torrent Dashboard now authenticates with the standard Authorization header, which Jellyfin has accepted since 10.8.",
+      "highlights": [
+        "Jellyfin status, scheduled tasks, and library refresh work again with Jellyfin 12.x servers.",
+        "Existing Jellyfin API keys keep working; no settings changes are required."
+      ],
+      "fixes": [
+        "Jellyfin requests send Authorization: MediaBrowser Client=..., Device=..., DeviceId=..., Version=..., Token=... instead of the removed X-Emby-Token header.",
+        "Hardening tests close their SQLite connections so the Windows validation jobs can delete temporary databases."
+      ],
+      "technical": [
+        "All Jellyfin calls share one request helper, so the header change covers status, health checks, scheduled tasks, library refresh, and the local recovery tool.",
+        "Header values are quoted and escaped; the Authorization form is supported from Jellyfin 10.8 onward, so older servers keep working."
+      ],
+      "validation": [
+        "Jellyfin tests assert the MediaBrowser Authorization header and that the legacy X-Emby-Token header is no longer sent.",
+        "Runs the standard Ubuntu/Windows Python 3.13/3.14 matrix, source updater build, and Windows executable smoke tests."
+      ],
+      "known_issues": [
+        "Backup encryption remains opt-in; unencrypted portable backups can contain saved client and integration credentials and should be stored securely.",
+        "Windows executables are not code-signed yet.",
+        "qBittorrent and integration API keys are stored in plain text in config.json."
+      ],
+      "architecture": [],
+      "decisions": [
+        "Use only the standard Authorization header rather than also sending legacy headers, so the integration does not depend on Jellyfin's EnableLegacyAuthorization setting."
+      ],
+      "next_steps": [
+        {
+          "priority": 1,
+          "title": "Verify Jellyfin 12 integration after update",
+          "detail": "Update, open the Jellyfin integration, and confirm server status, scheduled tasks, and library refresh succeed against a Jellyfin 12.x server."
+        }
+      ]
+    },
+    {
       "version": "0.5.164",
       "date": "2026-10-21",
       "status": "prerelease",
