@@ -23,6 +23,7 @@ class HistoryStore:
         self.lock = threading.RLock()
         self.last_sample = {}
         self.last_seen = {}
+        self._last_cleanup = 0.0
         self.audit = AuditStore(self.path.with_name("security-audit.sqlite3"))
         self.initialize()
 
@@ -64,32 +65,61 @@ class HistoryStore:
         with self.lock:
             self.last_sample.clear()
             self.last_seen.clear()
+            self._last_cleanup = 0.0
 
     def sample(self, server_id, torrents, transfer, disk_free, every):
+        """Record a polling pass.
+
+        Completion detection runs on every pass so "completed" events stay
+        immediate, but the per-torrent history upsert and the snapshot row are
+        only written once per sample interval (or when a torrent completes).
+        The collector polls every second, so writing every torrent on every
+        pass previously meant hundreds of SQLite writes per second.
+        """
         now = int(time.time())
         with self.lock:
-            if now - self.last_sample.get(server_id, 0) >= every:
-                active = sum(1 for t in torrents if float(t.get("progress", 0)) < 1 and "paused" not in str(t.get("state", "")).lower() and "stopped" not in str(t.get("state", "")).lower())
-                remaining = sum(int(t.get("amount_left", 0) or 0) for t in torrents)
-                with self._db() as db:
+            due = now - self.last_sample.get(server_id, 0) >= every
+            completed_events = []
+            changed = []
+            for t in torrents:
+                h = t.get("hash")
+                if not h:
+                    continue
+                prev = self.last_seen.get((server_id, h))
+                completed = float(t.get("progress", 0) or 0) >= 0.999999
+                if prev is not None and not prev and completed:
+                    completed_events.append((now, server_id, h, t.get("name", ""), "completed", "{}"))
+                if due or prev is None or prev != completed:
+                    changed.append(t)
+                self.last_seen[(server_id, h)] = completed
+            if not due and not changed and not completed_events:
+                return
+            with self._db() as db:
+                if due:
+                    active = sum(1 for t in torrents if float(t.get("progress", 0) or 0) < 1 and "paused" not in str(t.get("state", "")).lower() and "stopped" not in str(t.get("state", "")).lower())
+                    remaining = sum(int(t.get("amount_left", 0) or 0) for t in torrents)
                     db.execute("INSERT INTO snapshots VALUES(?,?,?,?,?,?,?,?)", (
                         now, server_id, int(transfer.get("dl_info_speed", 0) or 0), int(transfer.get("up_info_speed", 0) or 0),
                         active, len(torrents), remaining, disk_free
                     ))
-                self.last_sample[server_id] = now
-            with self._db() as db:
-                for t in torrents:
-                    h = t.get("hash")
-                    if not h: continue
-                    prev = self.last_seen.get((server_id, h))
-                    completed = float(t.get("progress", 0) or 0) >= 0.999999
-                    if prev is not None and not prev and completed:
-                        db.execute("INSERT INTO events(ts,server_id,hash,name,event,data) VALUES(?,?,?,?,?,?)", (now, server_id, h, t.get("name", ""), "completed", "{}"))
-                    self.last_seen[(server_id, h)] = completed
-                    db.execute("""INSERT INTO torrent_history(server_id,hash,name,category,added_on,completion_on,downloaded,uploaded,ratio,last_seen)
+                if completed_events:
+                    db.executemany("INSERT INTO events(ts,server_id,hash,name,event,data) VALUES(?,?,?,?,?,?)", completed_events)
+                if changed:
+                    db.executemany("""INSERT INTO torrent_history(server_id,hash,name,category,added_on,completion_on,downloaded,uploaded,ratio,last_seen)
                         VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(server_id,hash) DO UPDATE SET name=excluded.name,category=excluded.category,
                         completion_on=excluded.completion_on,downloaded=excluded.downloaded,uploaded=excluded.uploaded,ratio=excluded.ratio,last_seen=excluded.last_seen""",
-                        (server_id,h,t.get("name",""),t.get("category",""),int(t.get("added_on",0) or 0),int(t.get("completion_on",0) or 0),int(t.get("downloaded",0) or 0),int(t.get("uploaded",0) or 0),float(t.get("ratio",0) or 0),now))
+                        [(server_id,t.get("hash"),t.get("name",""),t.get("category",""),int(t.get("added_on",0) or 0),int(t.get("completion_on",0) or 0),int(t.get("downloaded",0) or 0),int(t.get("uploaded",0) or 0),float(t.get("ratio",0) or 0),now) for t in changed])
+            if due:
+                self.last_sample[server_id] = now
+
+    def maybe_cleanup(self, days, interval=600):
+        """Run retention cleanup at most once per ``interval`` seconds."""
+        now = time.time()
+        with self.lock:
+            if now - getattr(self, "_last_cleanup", 0.0) < interval:
+                return None
+            self._last_cleanup = now
+        return self.cleanup(days)
 
     def event(self, server_id, event, name="", hash_="", data=None):
         payload = data or {}

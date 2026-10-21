@@ -539,7 +539,7 @@ def main():
     assert 'def client_settings(self):' in dashboard_py and 'def update_client_settings(self, data):' in dashboard_py
     assert '/api/v2/app/setPreferences' in dashboard_py
     assert 'proxy_password' in dashboard_py and 'password_configured' in dashboard_py
-    assert 'preferences = client.preferences()' in dashboard_py and 'disk_free = disk_free_for(preferences)' in dashboard_py
+    assert 'preferences = client.cached_preferences()' in dashboard_py and 'disk_free = disk_free_for(preferences)' in dashboard_py
     assert '0.5.26 qBitTorrent-style torrent toolbar' in app_css
     assert '0.5.28 advanced per-client qBitTorrent settings' in settings_css
 

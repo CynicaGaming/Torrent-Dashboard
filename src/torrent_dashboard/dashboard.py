@@ -17,6 +17,7 @@ import secrets
 import shutil
 import socket
 import subprocess
+import queue
 import re
 import ssl
 import sys
@@ -232,15 +233,30 @@ def mutate_config(transform):
 
 
 class SessionStore:
+    PURGE_INTERVAL_SECONDS = 300
+
     def __init__(self):
         self.lock = threading.Lock()
         self.sessions = {}
+        self._last_purge = 0.0
+
+    def _purge_expired_locked(self, now):
+        # Expired sessions were previously only dropped when their own token was
+        # presented again, so abandoned sessions accumulated for the life of the
+        # process. Sweep periodically whenever a new session is created.
+        if now - self._last_purge < self.PURGE_INTERVAL_SECONDS:
+            return
+        self._last_purge = now
+        for token in [t for t, item in self.sessions.items() if item["expires"] < now]:
+            self.sessions.pop(token, None)
 
     def create(self, username, hours, auth_kind, group="administrator", user_id="", display_name=""):
         token = secrets.token_urlsafe(32)
         csrf = secrets.token_urlsafe(24)
-        expires = time.time() + max(1, float(hours)) * 3600
+        now = time.time()
+        expires = now + max(1, float(hours)) * 3600
         with self.lock:
+            self._purge_expired_locked(now)
             self.sessions[token] = {
                 "username": username,
                 "csrf": csrf,
@@ -305,6 +321,27 @@ REGISTRATION_ATTEMPTS = defaultdict(deque)
 REGISTRATION_LOCK = threading.Lock()
 RECOVERY_LOCK = threading.Lock()
 RECOVERY_ATTEMPTS = defaultdict(deque)
+# Verified when a login names an unknown user so the response time does not
+# reveal which usernames exist.
+_DUMMY_PASSWORD_HASH = hash_password(secrets.token_urlsafe(16))
+
+
+def _record_attempt(attempts, ip, now, window, limit):
+    """Sliding-window rate limit. Returns False when ``ip`` is over ``limit``.
+
+    Caller must hold the lock that guards ``attempts``. Idle IP entries are
+    removed so the table cannot grow without bound.
+    """
+    q = attempts[ip]
+    while q and q[0] < now - window:
+        q.popleft()
+    if len(q) >= limit:
+        return False
+    q.append(now)
+    if len(attempts) > 1024:
+        for key in [k for k, v in attempts.items() if not v or v[-1] < now - window]:
+            attempts.pop(key, None)
+    return True
 
 
 def normalize_trusted_entry(value):
@@ -679,6 +716,7 @@ class QBitClient:
         # refresh and tripping qBittorrent's Web UI IP-ban protection. API-key
         # authentication is stateless and never calls the login endpoint.
         self.auth_blocked_error = None
+        self._value_cache = {}
 
     def _make_opener(self):
         jar = http.cookiejar.CookieJar()
@@ -772,8 +810,16 @@ class QBitClient:
                     self.opener = None
                     self.login()
                     req = urllib.request.Request(url, data=data, headers=hdrs, method=method)
-                    with self.opener.open(req, timeout=12) as r:
-                        body = r.read(); status = r.status
+                    try:
+                        with self.opener.open(req, timeout=12) as r:
+                            body = r.read(); status = r.status
+                    except urllib.error.HTTPError as retry_error:
+                        # Previously this escaped as a raw HTTPError.
+                        self.opener = None
+                        retry_detail = retry_error.read().decode(errors="replace")[:500]
+                        raise RuntimeError(f"qBittorrent HTTP {retry_error.code}: {retry_detail or path}") from retry_error
+                    except urllib.error.URLError as retry_error:
+                        raise RuntimeError(f"qBittorrent connection error: {retry_error.reason}") from retry_error
                 else:
                     raise RuntimeError(f"qBittorrent HTTP {e.code}: {detail or path}") from e
             except urllib.error.URLError as e:
@@ -892,21 +938,47 @@ class QBitClient:
         detail = str(errors[-1]) if errors else "metadata is unavailable"
         raise RuntimeError(f"Torrent metadata is not available to save yet: {detail}")
 
+    VERSION_CACHE_SECONDS = 300
+    PREFERENCES_CACHE_SECONDS = 30
+
+    def _cached(self, key, ttl, loader):
+        """Return a cached value younger than ``ttl`` seconds, else reload it.
+
+        The collector polls every second; app versions and preferences rarely
+        change, so re-fetching them on every pass only loads qBittorrent.
+        """
+        now = time.monotonic()
+        with self.lock:
+            hit = self._value_cache.get(key)
+            if hit and now - hit[0] < ttl:
+                return hit[1]
+        value = loader()
+        with self.lock:
+            self._value_cache[key] = (now, value)
+        return value
+
+    def invalidate_cache(self):
+        with self.lock:
+            self._value_cache.clear()
+
+    def _optional_text(self, path):
+        try:
+            return self.get_text(path)
+        except Exception:
+            return None
+
     def info(self):
         torrents = self.get_json("/api/v2/torrents/info") or []
         transfer = self.get_json("/api/v2/transfer/info") or {}
-        try:
-            app_version = self.get_text("/api/v2/app/version")
-        except Exception:
-            app_version = None
-        try:
-            api_version = self.get_text("/api/v2/app/webapiVersion")
-        except Exception:
-            api_version = None
+        app_version = self._cached("app_version", self.VERSION_CACHE_SECONDS, lambda: self._optional_text("/api/v2/app/version"))
+        api_version = self._cached("api_version", self.VERSION_CACHE_SECONDS, lambda: self._optional_text("/api/v2/app/webapiVersion"))
         return torrents, transfer, app_version, api_version
 
     def preferences(self):
         return self.get_json("/api/v2/app/preferences") or {}
+
+    def cached_preferences(self):
+        return self._cached("preferences", self.PREFERENCES_CACHE_SECONDS, self.preferences)
 
     def metadata(self):
         # Browser-facing metadata intentionally excludes app/preferences. qBitTorrent
@@ -1041,6 +1113,7 @@ class QBitClient:
         requested_alt = bool(speed.get("alternative_enabled", False))
         if requested_alt != current_alt:
             self.post("/api/v2/transfer/toggleSpeedLimitsMode", {})
+        self.invalidate_cache()
         return self.client_settings()
 
     def detail(self, hash_):
@@ -1257,43 +1330,104 @@ def send_notification(cfg, title, message):
             pass
 
 
-def collector_loop(stop_event):
-    while not stop_event.is_set():
-        with STATE_GATE.activity():
-            cfg = load_config()
-            sample_every = max(5, int(cfg["dashboard"].get("history_sample_seconds", 10)))
-            for server in cfg.get("servers", []):
-                if not server.get("enabled", True): continue
-                sid = server.get("id")
-                try:
-                    client = get_client(cfg, sid)
-                    torrents, transfer, app_version, api_version = client.info()
-                    preferences = client.preferences()
-                    meta = client.metadata()
-                    disk_free = disk_free_for(preferences)
-                    with CACHE_LOCK:
-                        previous = CACHE.get(sid, {}).get("torrents", [])
-                        prev_completed = {t.get("hash") for t in previous if float(t.get("progress",0) or 0) >= .999999}
-                        now_completed = {t.get("hash") for t in torrents if float(t.get("progress",0) or 0) >= .999999}
-                        newly = now_completed - prev_completed if previous else set()
-                        CACHE[sid] = {
-                            "ok": True, "ts": int(time.time()), "server": {"id":sid,"name":server.get("name",sid)},
-                            "torrents": torrents, "transfer": transfer, "meta": meta,
-                            "app_version": app_version, "api_version": api_version, "disk_free": disk_free
-                        }
-                    HISTORY.sample(sid, torrents, transfer, disk_free, sample_every)
-                    for h in newly:
-                        t = next((x for x in torrents if x.get("hash") == h), None)
-                        if t:
-                            send_notification(cfg, "Torrent completed", f"{t.get('name','Torrent')} finished on {server.get('name',sid)}")
-                except Exception as e:
-                    with CACHE_LOCK:
-                        old = CACHE.get(sid, {})
-                        CACHE[sid] = {**old, "ok": False, "ts": int(time.time()), "server": {"id":sid,"name":server.get("name",sid)}, "error": str(e)}
+class NotificationDispatcher:
+    """Deliver notifications on one background thread.
+
+    Webhook calls can each block for up to 5 seconds. They used to run inline
+    in the 1-second collector loop, so one slow endpoint froze live status for
+    every server. Deliveries are now queued (bounded) and sent in order.
+    """
+
+    def __init__(self, sender, max_pending=100):
+        self._sender = sender
+        self._queue = queue.Queue(maxsize=max_pending)
+        self._lock = threading.Lock()
+        self._thread = None
+
+    def submit(self, cfg, title, message):
+        with self._lock:
+            if self._thread is None or not self._thread.is_alive():
+                self._thread = threading.Thread(target=self._run, name="notification-dispatcher", daemon=True)
+                self._thread.start()
+        try:
+            self._queue.put_nowait((cfg, title, message))
+            return True
+        except queue.Full:
+            logging.getLogger(__name__).warning("Notification queue is full; dropping %r", title)
+            return False
+
+    def _run(self):
+        while True:
+            cfg, title, message = self._queue.get()
             try:
-                HISTORY.cleanup(cfg["dashboard"].get("history_retention_days",30))
-            except Exception: pass
+                self._sender(cfg, title, message)
+            except Exception:
+                logging.getLogger(__name__).exception("Notification delivery failed")
+            finally:
+                self._queue.task_done()
+
+
+NOTIFICATIONS = NotificationDispatcher(lambda cfg, title, message: send_notification(cfg, title, message))
+
+
+def _bounded_int(value, default, minimum, maximum):
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(maximum, number))
+
+
+def collector_loop(stop_event):
+    log = logging.getLogger(__name__)
+    while not stop_event.is_set():
+        try:
+            _collect_once()
+        except Exception:
+            # Never let one unexpected error (for example a malformed config
+            # value) permanently kill the only status/history thread.
+            log.exception("Status collector pass failed")
         stop_event.wait(STATUS_REFRESH_SECONDS)
+
+
+def _collect_once():
+    """Poll every enabled client once and record cache, history, and notifications."""
+    with STATE_GATE.activity():
+        cfg = load_config()
+        sample_every = _bounded_int(cfg["dashboard"].get("history_sample_seconds", 10), 10, 5, 3600)
+        for server in cfg.get("servers", []):
+            if not server.get("enabled", True): continue
+            sid = server.get("id")
+            try:
+                client = get_client(cfg, sid)
+                torrents, transfer, app_version, api_version = client.info()
+                preferences = client.cached_preferences()
+                meta = client.metadata()
+                disk_free = disk_free_for(preferences)
+                with CACHE_LOCK:
+                    previous = CACHE.get(sid, {}).get("torrents", [])
+                    prev_completed = {t.get("hash") for t in previous if float(t.get("progress",0) or 0) >= .999999}
+                    now_completed = {t.get("hash") for t in torrents if float(t.get("progress",0) or 0) >= .999999}
+                    newly = now_completed - prev_completed if previous else set()
+                    CACHE[sid] = {
+                        "ok": True, "ts": int(time.time()), "server": {"id":sid,"name":server.get("name",sid)},
+                        "torrents": torrents, "transfer": transfer, "meta": meta,
+                        "app_version": app_version, "api_version": api_version, "disk_free": disk_free
+                    }
+                HISTORY.sample(sid, torrents, transfer, disk_free, sample_every)
+                for h in newly:
+                    t = next((x for x in torrents if x.get("hash") == h), None)
+                    if t:
+                        NOTIFICATIONS.submit(cfg, "Torrent completed", f"{t.get('name','Torrent')} finished on {server.get('name',sid)}")
+            except Exception as e:
+                with CACHE_LOCK:
+                    old = CACHE.get(sid, {})
+                    CACHE[sid] = {**old, "ok": False, "ts": int(time.time()), "server": {"id":sid,"name":server.get("name",sid)}, "error": str(e)}
+        try:
+            # Retention cleanup used to run three DELETEs every second.
+            HISTORY.maybe_cleanup(_bounded_int(cfg["dashboard"].get("history_retention_days", 30), 30, 1, 3650))
+        except Exception:
+            logging.getLogger(__name__).exception("History cleanup failed")
 
 
 def integration_request(url, api_key=None, token=None, path="/api/v3/system/status"):
@@ -1314,6 +1448,36 @@ def integration_request(url, api_key=None, token=None, path="/api/v3/system/stat
         return {"configured":True,"ok":False,"error":str(e)}
 
 
+ARR_QUEUE_CACHE_SECONDS = 30
+ARR_QUEUE_CACHE = {}
+ARR_QUEUE_CACHE_LOCK = threading.Lock()
+
+
+def _arr_queue_records(integration):
+    """Fetch an *arr download queue, cached briefly per integration.
+
+    The torrent detail panel refreshes every few seconds and each refresh used
+    to re-download every configured Sonarr/Radarr/Lidarr queue (5 s timeout
+    each, sequentially) before the detail response could be sent.
+    """
+    url=integration["url"].rstrip("/")+"/api/v3/queue?page=1&pageSize=200&includeUnknownSeriesItems=true&includeUnknownMovieItems=true"
+    key=(url,hashlib.sha256(str(integration["api_key"]).encode()).hexdigest())
+    now=time.monotonic()
+    with ARR_QUEUE_CACHE_LOCK:
+        hit=ARR_QUEUE_CACHE.get(key)
+        if hit and now-hit[0] < ARR_QUEUE_CACHE_SECONDS:
+            return hit[1]
+    req=urllib.request.Request(url,headers={"X-Api-Key":integration["api_key"]})
+    with urllib.request.urlopen(req,timeout=5) as resp:
+        data=json.loads(resp.read(5_000_000).decode())
+    records=data.get("records",[]) if isinstance(data,dict) else data if isinstance(data,list) else []
+    with ARR_QUEUE_CACHE_LOCK:
+        ARR_QUEUE_CACHE[key]=(now,records)
+        for stale in [k for k,v in ARR_QUEUE_CACHE.items() if now-v[0] >= ARR_QUEUE_CACHE_SECONDS]:
+            ARR_QUEUE_CACHE.pop(stale,None)
+    return records
+
+
 def torrent_integration_matches(cfg, hash_):
     out=[]
     for integration in cfg.get("integrations", []):
@@ -1322,11 +1486,8 @@ def torrent_integration_matches(cfg, hash_):
             continue
         if not integration.get("url") or not integration.get("api_key"):
             continue
-        url=integration["url"].rstrip("/")+"/api/v3/queue?page=1&pageSize=200&includeUnknownSeriesItems=true&includeUnknownMovieItems=true"
         try:
-            req=urllib.request.Request(url,headers={"X-Api-Key":integration["api_key"]})
-            data=json.loads(urllib.request.urlopen(req,timeout=5).read().decode())
-            records=data.get("records",data if isinstance(data,list) else [])
+            records=_arr_queue_records(integration)
             for rec in records:
                 if str(rec.get("downloadId","")).lower()==hash_.lower():
                     out.append({"integration":integration.get("name") or INTEGRATION_TYPES[name]["label"],"title":rec.get("title") or rec.get("series",{}).get("title") or rec.get("movie",{}).get("title"),"status":rec.get("status"),"trackedDownloadStatus":rec.get("trackedDownloadStatus")})
@@ -1708,7 +1869,12 @@ class Handler(BaseHTTPRequestHandler):
     timeout = 30
 
     def log_message(self, fmt, *args):
-        if args and str(args[1]).startswith("5"):
+        # log_request passes (requestline, code, size); log_error can pass a
+        # single argument (for example "Request timed out: %r"), which used to
+        # raise IndexError here. Log server errors and all log_error calls.
+        if len(args) >= 2 and str(args[1]).startswith("5"):
+            super().log_message(fmt,*args)
+        elif len(args) < 2:
             super().log_message(fmt,*args)
 
     def client_ip(self):
@@ -1802,11 +1968,8 @@ class Handler(BaseHTTPRequestHandler):
     def recovery_login_route(self):
         ip=self.client_ip(); now=time.time(); limit=10
         with RECOVERY_LOCK:
-            q=RECOVERY_ATTEMPTS[ip]
-            while q and q[0] < now-600: q.popleft()
-            if len(q) >= limit:
+            if not _record_attempt(RECOVERY_ATTEMPTS,ip,now,600,limit):
                 return self.send_json(429,{"error":"Too many recovery attempts"})
-            q.append(now)
         try:
             data=parse_json_body(self,12000)
         except Exception as exc:
@@ -1824,11 +1987,31 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_json(200,{"ok":True,"csrf":sess["csrf"],"group":"administrator","recovery":True},token)
     def do_GET(self):
         with STATE_GATE.activity():
-            return self._do_GET()
+            try:
+                return self._do_GET()
+            except (BrokenPipeError, ConnectionResetError):
+                raise
+            except Exception as exc:
+                # Previously an unexpected error (for example
+                # /api/history?minutes=abc) dropped the connection without
+                # any response. Answer with JSON instead.
+                status = 400 if isinstance(exc, (ValueError, RuntimeError)) else 500
+                if status == 500:
+                    logging.getLogger(__name__).exception("GET %s failed", self.path.partition("?")[0])
+                try:
+                    return self.send_json(status,{"error":str(exc) if status == 400 else "Internal server error"})
+                except Exception:
+                    return None
 
     def _do_GET(self):
         path,_,query=self.path.partition("?"); qs=urllib.parse.parse_qs(query)
-        if path=="/health": return self.send_json(200,{"ok":True,"version":VERSION,"pid":os.getpid(),"application":str(APP_DIR),"python":sys.executable})
+        if path=="/health":
+            health={"ok":True,"version":VERSION}
+            # Process ID and install paths are only useful to local tooling;
+            # do not disclose them to other machines on the network.
+            if is_loopback_ip(self.client_ip()):
+                health.update({"pid":os.getpid(),"application":str(APP_DIR),"python":sys.executable})
+            return self.send_json(200,health)
         if path=="/manifest.webmanifest": return self.serve_static("manifest.webmanifest")
         if path=="/sw.js": return self.serve_static("sw.js","application/javascript; charset=utf-8")
         if path.startswith("/static/"):
@@ -1841,6 +2024,11 @@ class Handler(BaseHTTPRequestHandler):
 
         if path=="/api/setup/status":
             cfg=load_config(); required=not bool(cfg.get("setup",{}).get("complete"))
+            if not required:
+                # These endpoints are unauthenticated. After setup the browser
+                # only needs to know setup is done; do not keep publishing the
+                # host's interfaces and trusted networks to anyone who asks.
+                return self.send_json(200,{"required":False,"code_required":False})
             interfaces=detect_network_interfaces()
             return self.send_json(200,{
                 "required": required,
@@ -1856,6 +2044,8 @@ class Handler(BaseHTTPRequestHandler):
         "local_ip": local_lan_ip(),
             })
         if path=="/api/setup/network-interfaces":
+            if load_config().get("setup",{}).get("complete"):
+                return self.send_json(403,{"error":"Setup has already been completed"})
             return self.send_json(200,{"interfaces":detect_network_interfaces(qs.get("refresh",["0"])[0]=="1")})
 
         if path=="/api/me":
@@ -2287,10 +2477,8 @@ class Handler(BaseHTTPRequestHandler):
         if str((cfg.get("auth") or {}).get("mode") or "required") == "disabled":
             return self.send_json(409,{"error":"Account registration is unavailable while authentication is disabled"})
         with REGISTRATION_LOCK:
-            q=REGISTRATION_ATTEMPTS[ip]
-            while q and q[0]<now-3600: q.popleft()
-            if len(q)>=5: return self.send_json(429,{"error":"Too many registration attempts. Try again later."})
-            q.append(now)
+            if not _record_attempt(REGISTRATION_ATTEMPTS,ip,now,3600,5):
+                return self.send_json(429,{"error":"Too many registration attempts. Try again later."})
         try: data=parse_json_body(self,20000)
         except Exception as e: return self.send_json(400,{"error":str(e)})
         if str(data.get("password") or "") != str(data.get("password2") or ""):
@@ -2305,16 +2493,17 @@ class Handler(BaseHTTPRequestHandler):
     def login_route(self):
         cfg=load_config(); a=cfg["auth"]; ip=self.client_ip(); now=time.time(); limit=max(1,int(a.get("max_login_attempts_per_10m",20)))
         with LOGIN_LOCK:
-            q=LOGIN_ATTEMPTS[ip]
-            while q and q[0]<now-600: q.popleft()
-            if len(q)>=limit: return self.send_json(429,{"error":"Too many login attempts"})
-            q.append(now)
+            if not _record_attempt(LOGIN_ATTEMPTS,ip,now,600,limit):
+                return self.send_json(429,{"error":"Too many login attempts"})
         try: data=parse_json_body(self,10000)
         except Exception as e: return self.send_json(400,{"error":str(e)})
         username=str(data.get("username","")).strip()
         user=user_by_username(cfg,username)
         encoded=str((user or {}).get("password_hash") or "")
-        if not user or not encoded or not verify_password(str(data.get("password","")),encoded):
+        # Always run one PBKDF2 verification so unknown usernames take as long
+        # to reject as wrong passwords.
+        password_ok=verify_password(str(data.get("password","")),encoded or _DUMMY_PASSWORD_HASH)
+        if not user or not encoded or not password_ok:
             HISTORY.event("dashboard", "login_failed", username[:128], "", {"client_ip": ip})
             return self.send_json(401,{"error":"Invalid username or password"})
         if user.get("status") == "pending":
@@ -2361,12 +2550,35 @@ def apply_settings_update(cfg,data):
     # Core settings are intentionally separate from user and integration CRUD.
     out=json.loads(json.dumps(cfg))
     dash=data.get("dashboard",{})
-    for k in ("title","port","history_retention_days","history_sample_seconds","low_disk_gb","https_enabled","https_cert","https_key"): 
-        if k in dash: out["dashboard"][k]=dash[k]
-    out.setdefault("dashboard",{}).pop("read_only",None)
+    if not isinstance(dash,dict): raise RuntimeError("Dashboard settings must be an object")
+    out.setdefault("dashboard",{})
+    # Validate types and ranges instead of storing whatever was posted. A
+    # non-numeric history_sample_seconds used to crash the collector thread.
+    numeric={
+        "port":("Dashboard port",1,65535),
+        "history_retention_days":("History retention",1,3650),
+        "history_sample_seconds":("History sample interval",5,3600),
+        "low_disk_gb":("Low disk warning",0,1_000_000),
+    }
+    for k,(label,low,high) in numeric.items():
+        if k in dash:
+            try:
+                value=float(dash[k]) if k=="low_disk_gb" else int(dash[k])
+            except (TypeError,ValueError) as exc:
+                raise RuntimeError(f"{label} must be a number") from exc
+            if value!=value or value<low or value>high:
+                raise RuntimeError(f"{label} must be between {low} and {high}")
+            out["dashboard"][k]=int(value) if float(value).is_integer() else value
+    if "title" in dash:
+        out["dashboard"]["title"]=str(dash.get("title") or "Torrent Dashboard").strip()[:128] or "Torrent Dashboard"
+    if "https_enabled" in dash:
+        out["dashboard"]["https_enabled"]=bool(dash["https_enabled"])
+    for k in ("https_cert","https_key"):
+        if k in dash: out["dashboard"][k]=str(dash.get(k) or "").strip()[:4096]
+    if out["dashboard"].get("https_enabled") and not (out["dashboard"].get("https_cert") and out["dashboard"].get("https_key")):
+        raise RuntimeError("HTTPS requires both a certificate and a key path")
+    out["dashboard"].pop("read_only",None)
     out["dashboard"].pop("refresh_seconds",None)
-    if "port" in dash:
-        out["dashboard"]["port"]=max(1,min(65535,int(dash.get("port") or 8765)))
     auth=data.get("auth",{})
     if "mode" in auth:
         if auth["mode"] not in ("required","lan_bypass","disabled"): raise RuntimeError("Invalid auth mode")
@@ -2394,8 +2606,19 @@ def apply_settings_update(cfg,data):
             new.append(item)
         out["servers"]=new
     if "notifications" in data:
+        if not isinstance(data["notifications"],dict): raise RuntimeError("Notification settings must be an object")
         for k,v in data["notifications"].items():
-            if k in out["notifications"] and v!="<configured>": out["notifications"][k]=v
+            if k not in out["notifications"] or v=="<configured>": continue
+            if k in ("custom_sound_file","custom_sound_name","custom_sound_mime"):
+                continue  # Managed only by the sound upload endpoint.
+            current=out["notifications"][k]
+            if isinstance(current,bool):
+                v=bool(v)
+            elif k=="volume":
+                v=_bounded_int(v,current if isinstance(current,int) else 72,0,100)
+            elif isinstance(current,str):
+                v=str(v if v is not None else "")[:4096]
+            out["notifications"][k]=v
     sync_legacy_auth(out)
     return out
 
@@ -2436,7 +2659,11 @@ def main():
     if cfg["dashboard"].get("https_enabled"):
         cert=cfg["dashboard"].get("https_cert",""); key=cfg["dashboard"].get("https_key","")
         if not cert or not key: raise SystemExit("HTTPS is enabled but https_cert/https_key are not configured")
-        ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); ctx.load_cert_chain(cert,key); server.socket=ctx.wrap_socket(server.socket,server_side=True); scheme="https"
+        ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); ctx.minimum_version=ssl.TLSVersion.TLSv1_2; ctx.load_cert_chain(cert,key)
+        # Defer the TLS handshake to the per-connection handler thread. With the
+        # default (handshake inside accept()), one client that connects and
+        # never completes the handshake stalls the accept loop for everyone.
+        server.socket=ctx.wrap_socket(server.socket,server_side=True,do_handshake_on_connect=False); scheme="https"
     print(f"Torrent Dashboard {VERSION}")
     print(f"Process ID: {os.getpid()}")
     print(f"Application: {APP_DIR}")
