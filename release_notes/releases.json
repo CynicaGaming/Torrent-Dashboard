@@ -12,6 +12,52 @@
   },
   "releases": [
     {
+      "version": "0.5.167",
+      "date": "2026-10-21",
+      "status": "prerelease",
+      "title": "Choose torrent columns, including every qBittorrent column",
+      "summary": "Right-clicking the torrent header now shows a single Reset action and a checklist of every column qBittorrent's Web UI offers, so columns can be shown or hidden. Twenty-six columns are new, including Added on, Tracker, Save path, Downloaded/Uploaded, Time active, and Info hash.",
+      "highlights": [
+        "Right-click the header to show or hide columns from a checklist of all 38 qBittorrent torrent columns; Reset restores the default view.",
+        "New columns: Queue position, Total size, Popularity, Created on, Added on, Completed on, Tracker, Down/Up limit, Downloaded, Uploaded, Session downloaded/uploaded, Remaining, Time active, Save path, Completed, Ratio limit, Last seen complete, Last activity, Availability, Incomplete save path, Info hash v1/v2, Reannounce in, and Private.",
+        "Every column is sortable, movable, and resizable.",
+        "The default view still fits without a horizontal scrollbar at every desktop width; with many columns the torrent list scrolls sideways instead of squeezing them unreadably."
+      ],
+      "fixes": [
+        "The right-hand column can now be resized; widening past the available space grows the table and narrowing gives the space back.",
+        "Saved sorts on columns whose keys contain underscores are parsed correctly."
+      ],
+      "technical": [
+        "tdTorrentLayout gains an extra field (user-added width beyond the viewport); order lists only visible columns and widths keeps a share for every column. v0.5.166 layouts load unchanged.",
+        "Column widths use largest-remainder rounding so they sum exactly to the available width.",
+        "Display floors (how far a narrow window may squeeze a column) are separate from drag minimums, so the default columns keep fitting narrow desktop windows."
+      ],
+      "validation": [
+        "Headless Chromium checks cover the column chooser, toggling, cell values, sorting extra columns, enabling all 38 columns, growing and shrinking past the viewport, last-column lock, reset, persistence, v0.5.166 layout compatibility, mobile cards, and the v0.5.166 reorder/resize suite, plus a width sweep from 821 to 1920 px with no horizontal scrollbar for the default view.",
+        "Runs the standard Ubuntu/Windows Python 3.13/3.14 matrix, source updater build, and Windows executable smoke tests."
+      ],
+      "known_issues": [
+        "Mobile cards always show the default fields; the column chooser applies to desktop/tablet only.",
+        "Backup encryption remains opt-in; unencrypted portable backups can contain saved client and integration credentials and should be stored securely.",
+        "Windows executables are not code-signed yet."
+      ],
+      "architecture": [
+        "Torrent columns are described by one registry (labels, formatting, sorting, alignment, default share, minimum) that drives header creation, row rendering, sorting, and the chooser."
+      ],
+      "decisions": [
+        "Match qBittorrent's Web UI column set and value conventions, omitting its decorative Status icon column.",
+        "Newly shown columns are appended at the right edge; hidden columns keep their width share for when they return.",
+        "At least one column must stay visible."
+      ],
+      "next_steps": [
+        {
+          "priority": 1,
+          "title": "Compare extra columns with qBittorrent",
+          "detail": "Enable the additional columns and compare values with qBittorrent's Web UI for the same torrents, especially limits, ratio limit, queue position, and private flags."
+        }
+      ]
+    },
+    {
       "version": "0.5.166",
       "date": "2026-10-21",
       "status": "prerelease",

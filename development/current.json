@@ -1,20 +1,19 @@
 {
   "schema": 1,
   "status": "release-candidate",
-  "objective": "Publish v0.5.166 with movable and resizable torrent columns",
-  "why": "Users want to arrange the torrent list to the information they monitor and widen columns whose labels or values are truncated.",
+  "objective": "Publish v0.5.167 with a torrent column chooser covering every qBittorrent column",
+  "why": "Users want to see the same torrent information qBittorrent offers and hide what they do not monitor, with one simple reset.",
   "acceptance_criteria": [
-    "Dragging a header past a 6 px threshold reorders the column; a plain click still sorts.",
-    "Dragging a header's right-edge divider resizes only that boundary and never creates a horizontal scrollbar.",
-    "Layouts persist per browser across refreshes and reloads, and can be reset from the header context menu.",
-    "Mobile cards keep the default field order.",
+    "Right-clicking the header shows Reset plus a checklist of all 38 qBittorrent columns.",
+    "Toggling a column shows or hides it immediately; the last visible column cannot be hidden.",
+    "All columns sort, move, and resize; the default view never needs a horizontal scrollbar.",
     "The full source matrix, source updater build, and compiled Windows smoke tests pass.",
-    "v0.5.166 publishes source and Windows updater packages with SHA-256 digests."
+    "v0.5.167 publishes source and Windows updater packages with SHA-256 digests."
   ],
   "decisions": [
-    "Keep the table fitted to the viewport: resizing redistributes width among columns rather than growing the table, avoiding the v0.5.97-0.5.100 horizontal-overflow tradeoffs.",
-    "Columns to the left of a resized boundary never move.",
-    "Mobile cards ignore the desktop column order."
+    "Match qBittorrent's Web UI column set and value conventions, omitting its decorative Status icon column.",
+    "Newly shown columns are appended at the right edge; hidden columns keep their width share for when they return.",
+    "At least one column must stay visible."
   ],
   "files": [
     "static/app.js",
@@ -30,7 +29,7 @@
   ],
   "blockers": [],
   "out_of_scope": [
-    "No column hiding or new columns in this release."
+    "Mobile card fields remain fixed."
   ],
-  "next_action": "Run full validation and Windows packaging; if green, publish and verify the complete updater-visible v0.5.166 release."
+  "next_action": "Run full validation and Windows packaging; if green, publish and verify the complete updater-visible v0.5.167 release."
 }

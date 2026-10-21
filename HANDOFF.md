@@ -7,34 +7,33 @@
 This handoff is intentionally portable across public forks. Verify the current checkout's Git remote, branch, and open work before using upstream references as instructions.
 
 - Canonical upstream: `CynicaGaming/TorrentDashboard`
-- Last documented upstream build: **v0.5.166** (prerelease)
+- Last documented upstream build: **v0.5.167** (prerelease)
 
 ## Last known-good state
 
-Torrent-list columns can be rearranged by dragging their headers and resized by dragging their right edge, while the table always fits the torrent viewport without a horizontal scrollbar.
+Right-clicking the torrent header now shows a single Reset action and a checklist of every column qBittorrent's Web UI offers, so columns can be shown or hidden. Twenty-six columns are new, including Added on, Tracker, Save path, Downloaded/Uploaded, Time active, and Info hash.
 
 The released-state details and recent history are in `PROJECT_STATE.md`; architectural constraints are in `ARCHITECTURE.md`.
 
 ## Active development intent
 
 - Status: **release-candidate**
-- Objective: **Publish v0.5.166 with movable and resizable torrent columns**
-- Why: Users want to arrange the torrent list to the information they monitor and widen columns whose labels or values are truncated.
+- Objective: **Publish v0.5.167 with a torrent column chooser covering every qBittorrent column**
+- Why: Users want to see the same torrent information qBittorrent offers and hide what they do not monitor, with one simple reset.
 
 ### Acceptance criteria
 
-- Dragging a header past a 6 px threshold reorders the column; a plain click still sorts.
-- Dragging a header's right-edge divider resizes only that boundary and never creates a horizontal scrollbar.
-- Layouts persist per browser across refreshes and reloads, and can be reset from the header context menu.
-- Mobile cards keep the default field order.
+- Right-clicking the header shows Reset plus a checklist of all 38 qBittorrent columns.
+- Toggling a column shows or hides it immediately; the last visible column cannot be hidden.
+- All columns sort, move, and resize; the default view never needs a horizontal scrollbar.
 - The full source matrix, source updater build, and compiled Windows smoke tests pass.
-- v0.5.166 publishes source and Windows updater packages with SHA-256 digests.
+- v0.5.167 publishes source and Windows updater packages with SHA-256 digests.
 
 ### Decisions already made
 
-- Keep the table fitted to the viewport: resizing redistributes width among columns rather than growing the table, avoiding the v0.5.97-0.5.100 horizontal-overflow tradeoffs.
-- Columns to the left of a resized boundary never move.
-- Mobile cards ignore the desktop column order.
+- Match qBittorrent's Web UI column set and value conventions, omitting its decorative Status icon column.
+- Newly shown columns are appended at the right edge; hidden columns keep their width share for when they return.
+- At least one column must stay visible.
 
 ### Expected areas of change
 
@@ -55,11 +54,11 @@ None currently recorded.
 
 ### Explicitly out of scope
 
-- No column hiding or new columns in this release.
+- Mobile card fields remain fixed.
 
 ## Exact next action
 
-Run full validation and Windows packaging; if green, publish and verify the complete updater-visible v0.5.166 release.
+Run full validation and Windows packaging; if green, publish and verify the complete updater-visible v0.5.167 release.
 
 ## Resume checklist
 

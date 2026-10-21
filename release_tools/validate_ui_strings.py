@@ -725,14 +725,14 @@ def main():
     assert "const TORRENT_LAYOUT_KEY='tdTorrentLayout';" in app_js and "const TORRENT_DESKTOP_QUERY='(min-width:821px)';" in app_js
     for fn in ('function normalizeTorrentLayout(raw)', 'function torrentColumnOrder()', 'function torrentColumnPixelWidths(wrap)',
                'function torrentColGroup(table)', 'function syncTorrentHeaderOrder()', 'function bindTorrentColumnLayoutUI()',
-               'function applyTorrentColumnResize(key,startPx,delta)', 'function moveTorrentColumn(key,index)',
+               'function applyTorrentColumnResize(key,startPx,delta,startExtra=torrentLayout.extra||0)', 'function moveTorrentColumn(key,index)',
                'function resetTorrentLayout(', 'function showTorrentHeaderMenu(event)', 'function torrentHeaderKeydown(event)'):
         assert fn in app_js, fn
     # Fit-to-viewport: the last column absorbs rounding and widths come from the live wrap width.
-    assert 'Math.floor((wrap?.clientWidth||0)-TORRENT_FIXED_COLUMN_WIDTH)' in app_js
-    assert 'index===order.length-1?Math.max(0,available-used)' in app_js
+    assert 'Math.floor((wrap?.clientWidth||0)-TORRENT_FIXED_COLUMN_WIDTH)' in app_js and 'torrentLayout.extra||0' in app_js
+    assert 'Largest-remainder rounding' in app_js
     # Rows render in the saved order; mobile always uses the fixed card order.
-    assert 'function rowHtml(t,order=torrentColumnOrder()){' in app_js and "order.map(key=>cells[key]).join('')" in app_js
+    assert 'function rowHtml(t,order=torrentColumnOrder()){' in app_js and "order.map(key=>cells[key]??torrentExtraCell(t,key)).join('')" in app_js
     assert 'return torrentDesktopLayout()?torrentLayout.order:FIXED_TORRENT_COLUMN_ORDER' in app_js
     assert "window.matchMedia?.(TORRENT_DESKTOP_QUERY).addEventListener?.('change',()=>render())" in app_js
     # A drag or resize must not also sort.
@@ -744,7 +744,19 @@ def main():
     for obsolete in ('torrentColumnPreferences','column-resize-handle','reorderTorrentColumns','renderTorrentColumnMenu','showTorrentColumnMenu','row-spacer','applyTorrentColumnWidths','syncTorrentTableWidth','torrentRightmostColumnResizeMaxWidth','draggedTorrentColumn'):
         assert obsolete not in app_js
     assert 'function normalizedTorrentSort' in app_js and 'function torrentSortValue' in app_js and 'function setTorrentSort' in app_js
-    assert "if(!FIXED_TORRENT_COLUMN_ORDER.includes(key))return" in app_js
+    assert "if(!TORRENT_COLUMN_KEYS.includes(key))return" in app_js
+    # 0.5.167 column chooser: every qBittorrent Web UI torrent column can be shown or hidden.
+    assert 'const TORRENT_EXTRA_COLUMNS={' in app_js and 'const TORRENT_COLUMN_MENU_ORDER=[' in app_js
+    for key in ('priority','total_size','popularity','creation_date','added_on','completion_on','tracker','dl_limit','up_limit','downloaded','uploaded','downloaded_session','uploaded_session','amount_left','time_active','save_path','completed','max_ratio','seen_complete','last_activity','availability','download_path','infohash_v1','infohash_v2','reannounce','private'):
+        assert f"  {key}:{{label:" in app_js, key
+    assert "match(/^([a-z0-9_]+)_(asc|desc)$/)" in app_js
+    assert 'function setTorrentColumnVisible(key,visible)' in app_js and 'function renderTorrentHeaderMenu()' in app_js
+    assert '<button type="button" data-layout="reset"><span>Reset</span></button>' in app_js
+    assert 'data-layout="widths"' not in app_js and 'data-layout="order"' not in app_js
+    assert "checked&&last?' disabled':''" in app_js
+    assert 'function torrentColumnFloorPx(key)' in app_js and "wrap.classList.toggle('torrent-cols-overflow',overflow)" in app_js
+    assert '.torrent-list-region .table-wrap.torrent-cols-overflow{overflow-x:auto}' in app_css
+    assert '0.5.167 torrent column chooser' in app_css
     assert "sortIcon.innerHTML=materialIconSvg('expand_more')" in app_js and "th.setAttribute('aria-sort'" in app_js
     assert "${t.name||''} ${t.category||''} ${t.tags||''} ${t.tracker||''}" in app_js
     assert 'const TORRENT_LONG_PRESS_MS=550,TORRENT_LONG_PRESS_MOVE_PX=12;' in app_js
@@ -757,7 +769,7 @@ def main():
     assert '0.5.101 fixed torrent table layout' in app_css and '0.5.102 contextual torrent row actions' in app_css
     assert '0.5.166 customizable torrent columns' in app_css
     assert '#torrentTable .torrent-col-resizer{position:absolute;top:0;right:0;bottom:0;width:9px;cursor:col-resize' in app_css
-    assert '#torrentTable thead th[data-col]:last-child .torrent-col-resizer{display:none}' in app_css
+    assert ':last-child .torrent-col-resizer{display:none}' not in app_css
     assert '@media(max-width:820px){#torrentTable .torrent-col-resizer{display:none}}' in app_css
     assert '.column-resize-handle' not in app_css and '.column-menu' not in app_css and '.column-dragging' not in app_css
     assert '#torrentTable{width:100%;min-width:0;table-layout:fixed}' in app_css
@@ -771,11 +783,11 @@ def main():
     testing = (ROOT / 'TESTING.md').read_text(encoding='utf-8')
     assert '## Customizable torrent columns' in design and '## Fixed torrent columns' not in design
     assert 'Name 29%, Size 5%, Status 7%, Progress 20%' in design
-    assert 'must not introduce a horizontal scrollbar' in design
+    assert 'never needs a horizontal scrollbar' in design
     assert 'torrent commands are contextual rather than occupying a permanent Actions column' in design
     assert 'a deliberate long press opens it on touch' in design
     assert '### Customizable torrent columns' in testing
-    assert 'no horizontal scrollbar' in testing
+    assert 'no horizontal scrollbar' in testing and 'Right-click the header' in testing
     assert 'there is no dedicated Actions column' in testing
     assert 'Long-press a non-control area of a torrent card' in testing
 

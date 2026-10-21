@@ -6,22 +6,22 @@
 
 ## Current baseline
 
-- Latest documented build: **v0.5.166** (prerelease)
+- Latest documented build: **v0.5.167** (prerelease)
 - Canonical upstream: `CynicaGaming/TorrentDashboard`
 
 ### Latest release summary
 
-Torrent-list columns can be rearranged by dragging their headers and resized by dragging their right edge, while the table always fits the torrent viewport without a horizontal scrollbar.
+Right-clicking the torrent header now shows a single Reset action and a checklist of every column qBittorrent's Web UI offers, so columns can be shown or hidden. Twenty-six columns are new, including Added on, Tracker, Save path, Downloaded/Uploaded, Time active, and Info hash.
 
 ## Architecture state
 
-- Column layout is a browser-local presentation preference applied through a table colgroup instead of per-cell inline widths.
+- Torrent columns are described by one registry (labels, formatting, sorting, alignment, default share, minimum) that drives header creation, row rendering, sorting, and the chooser.
 
 ## Current engineering decisions
 
-- Keep the table fitted to the viewport: resizing redistributes width among columns rather than growing the table, avoiding the v0.5.97-0.5.100 horizontal-overflow tradeoffs.
-- Columns to the left of a resized boundary never move.
-- Mobile cards ignore the desktop column order.
+- Match qBittorrent's Web UI column set and value conventions, omitting its decorative Status icon column.
+- Newly shown columns are appended at the right edge; hidden columns keep their width share for when they return.
+- At least one column must stay visible.
 
 ## Development principles
 
@@ -33,6 +33,15 @@ Torrent-list columns can be rearranged by dragging their headers and resized by 
 - Keep public development continuity portable across forks; label canonical repository/branch/PR references as upstream context rather than local identity.
 
 ## Recent work
+
+### v0.5.167 — Choose torrent columns, including every qBittorrent column
+
+Right-clicking the torrent header now shows a single Reset action and a checklist of every column qBittorrent's Web UI offers, so columns can be shown or hidden. Twenty-six columns are new, including Added on, Tracker, Save path, Downloaded/Uploaded, Time active, and Info hash.
+
+- Right-click the header to show or hide columns from a checklist of all 38 qBittorrent torrent columns; Reset restores the default view.
+- New columns: Queue position, Total size, Popularity, Created on, Added on, Completed on, Tracker, Down/Up limit, Downloaded, Uploaded, Session downloaded/uploaded, Remaining, Time active, Save path, Completed, Ratio limit, Last seen complete, Last activity, Availability, Incomplete save path, Info hash v1/v2, Reannounce in, and Private.
+- Every column is sortable, movable, and resizable.
+- The default view still fits without a horizontal scrollbar at every desktop width; with many columns the torrent list scrolls sideways instead of squeezing them unreadably.
 
 ### v0.5.166 — Movable and resizable torrent columns
 
@@ -67,21 +76,13 @@ Restores password confirmation during sign-up and gives administrators the full 
 - Gives Pending users the same Username, User group, First name, Last name, Email, Password, and Confirm password fields as active users.
 - Saves administrator edits automatically before approving a Pending user, while keeping approval and rejection explicit.
 
-### v0.5.162 — Unify Pending users and distinguish Sign up
-
-Makes account creation visibly distinct from sign-in and manages Pending registrations in the normal Users list instead of a separate queue.
-
-- Shows Sign up in the access tab while the Create account pane is active, then restores Sign in when returning to login or Recovery.
-- Removes the separate Pending registrations settings card and shows Pending accounts directly in the normal Users accordion list.
-- Marks unapproved accounts with a Pending badge and keeps Approve and Reject actions inside that user entry.
-
 ## What to do next
 
-1. **Verify column customization on real browsers** — Reorder and resize columns in Chrome, Edge, Firefox, and Safari at several window widths; confirm no horizontal scrollbar and that layouts persist.
+1. **Compare extra columns with qBittorrent** — Enable the additional columns and compare values with qBittorrent's Web UI for the same torrents, especially limits, ratio limit, queue position, and private flags.
 
 ## Known issues
 
-- Columns cannot be hidden; at narrow desktop widths some compact headers are truncated until widened.
+- Mobile cards always show the default fields; the column chooser applies to desktop/tablet only.
 - Backup encryption remains opt-in; unencrypted portable backups can contain saved client and integration credentials and should be stored securely.
 - Windows executables are not code-signed yet.
 

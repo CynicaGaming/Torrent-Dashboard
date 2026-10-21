@@ -1,5 +1,5 @@
 'use strict';
-const FRONTEND_BUILD='0.5.166';
+const FRONTEND_BUILD='0.5.167';
 const HTML_BUILD=document.querySelector('meta[name="torrent-dashboard-build"]')?.content||'';
 const RECOVERY_KEY=`td-frontend-recovery-${FRONTEND_BUILD}`;
 async function recoverFrontendBuild(reason){
@@ -166,10 +166,51 @@ const state={me:null,csrf:'',setup:null,setupStep:0,setupMaxStep:0,server:localS
 const FIXED_TORRENT_COLUMN_ORDER=['name','size','state','progress','seeds','peers','down','up','eta','ratio','category','tags'];
 const FIXED_TORRENT_COLUMN_RATIOS={name:.29,size:.05,state:.07,progress:.20,seeds:.045,peers:.045,down:.045,up:.045,eta:.035,ratio:.045,category:.065,tags:.065};
 const TORRENT_FIXED_COLUMN_WIDTH=40;
-const TORRENT_SORT_DEFAULT_DIRECTIONS={name:'asc',size:'desc',progress:'desc',state:'asc',seeds:'desc',peers:'desc',down:'desc',up:'desc',eta:'asc',ratio:'desc',category:'asc',tags:'asc',added:'desc'};
+// Additional columns matching qBittorrent's Web UI torrent list (its decorative
+// "Status icon" column is omitted because Status already shows a styled state).
+// Each is hidden by default and can be enabled from the header right-click menu.
+function torrentRatioText(v){const n=Number(v);return n===-1?'∞':Number.isFinite(n)?n.toFixed(2):'—'}
+function torrentLimitText(v){const n=Number(v);return Number.isFinite(n)&&n>0?speed(n):'∞'}
+function torrentDateText(v){return Number(v)>0?when(v):'—'}
+const TORRENT_EXTRA_COLUMNS={
+  priority:{label:'#',menu:'Queue position (#)',numeric:true,share:.025,min:40,dir:'asc',value:t=>Number(t.priority)>0?String(t.priority):'*',sort:t=>Number(t.priority)>0?Number(t.priority):9e15},
+  total_size:{label:'Total size',numeric:true,dir:'desc',value:t=>bytes(t.total_size),sort:t=>Number(t.total_size||0)},
+  popularity:{label:'Popularity',numeric:true,dir:'desc',value:t=>torrentRatioText(t.popularity),sort:t=>Number(t.popularity||0)},
+  creation_date:{label:'Created on',share:.09,dir:'desc',value:t=>torrentDateText(t.creation_date),sort:t=>Number(t.creation_date||0)},
+  added_on:{label:'Added on',share:.09,dir:'desc',value:t=>torrentDateText(t.added_on),sort:t=>Number(t.added_on||0)},
+  completion_on:{label:'Completed on',share:.09,dir:'desc',value:t=>torrentDateText(t.completion_on),sort:t=>Number(t.completion_on)>0?Number(t.completion_on):0},
+  tracker:{label:'Tracker',share:.08,min:80,dir:'asc',value:t=>trackerHost(t.tracker)||'—',title:t=>t.tracker||'',sort:t=>String(trackerHost(t.tracker)||'').toLowerCase()},
+  dl_limit:{label:'Down limit',numeric:true,dir:'desc',value:t=>torrentLimitText(t.dl_limit),sort:t=>Number(t.dl_limit)>0?Number(t.dl_limit):9e15},
+  up_limit:{label:'Up limit',numeric:true,dir:'desc',value:t=>torrentLimitText(t.up_limit),sort:t=>Number(t.up_limit)>0?Number(t.up_limit):9e15},
+  downloaded:{label:'Downloaded',numeric:true,dir:'desc',value:t=>bytes(t.downloaded),sort:t=>Number(t.downloaded||0)},
+  uploaded:{label:'Uploaded',numeric:true,dir:'desc',value:t=>bytes(t.uploaded),sort:t=>Number(t.uploaded||0)},
+  downloaded_session:{label:'Session downloaded',numeric:true,dir:'desc',value:t=>bytes(t.downloaded_session),sort:t=>Number(t.downloaded_session||0)},
+  uploaded_session:{label:'Session uploaded',numeric:true,dir:'desc',value:t=>bytes(t.uploaded_session),sort:t=>Number(t.uploaded_session||0)},
+  amount_left:{label:'Remaining',numeric:true,dir:'desc',value:t=>bytes(t.amount_left),sort:t=>Number(t.amount_left||0)},
+  time_active:{label:'Time active',share:.08,numeric:true,dir:'desc',value:t=>Number(t.seeding_time)>0?`${eta(t.time_active)} (seeded ${eta(t.seeding_time)})`:eta(t.time_active),sort:t=>Number(t.time_active||0)},
+  save_path:{label:'Save path',share:.1,min:80,dir:'asc',value:t=>t.save_path||'—',sort:t=>String(t.save_path||'').toLowerCase()},
+  completed:{label:'Completed',numeric:true,dir:'desc',value:t=>bytes(t.completed),sort:t=>Number(t.completed||0)},
+  max_ratio:{label:'Ratio limit',numeric:true,dir:'desc',value:t=>torrentRatioText(t.max_ratio),sort:t=>Number(t.max_ratio)===-1?9e15:Number(t.max_ratio||0)},
+  seen_complete:{label:'Last seen complete',share:.09,dir:'desc',value:t=>torrentDateText(t.seen_complete),sort:t=>Number(t.seen_complete||0)},
+  last_activity:{label:'Last activity',numeric:true,dir:'desc',value:t=>Number(t.last_activity)<1?'∞':rel(t.last_activity),sort:t=>Number(t.last_activity||0)},
+  availability:{label:'Availability',numeric:true,dir:'desc',value:t=>Number(t.availability)>=0?Number(t.availability).toFixed(3):'—',sort:t=>Number(t.availability||0)},
+  download_path:{label:'Incomplete save path',share:.1,min:80,dir:'asc',value:t=>t.download_path||'—',sort:t=>String(t.download_path||'').toLowerCase()},
+  infohash_v1:{label:'Info hash v1',share:.1,min:80,dir:'asc',value:t=>t.infohash_v1||'N/A',sort:t=>String(t.infohash_v1||'')},
+  infohash_v2:{label:'Info hash v2',share:.1,min:80,dir:'asc',value:t=>t.infohash_v2||'N/A',sort:t=>String(t.infohash_v2||'')},
+  reannounce:{label:'Reannounce in',numeric:true,dir:'asc',value:t=>eta(t.reannounce),sort:t=>Number(t.reannounce||0)},
+  private:{label:'Private',dir:'asc',value:t=>t.has_metadata===false||t.private===undefined?'N/A':t.private?'Yes':'No',sort:t=>t.private?1:0},
+};
+const TORRENT_COLUMN_LABELS={name:'Name',size:'Size',state:'Status',progress:'Progress',seeds:'Seeds',peers:'Peers',down:'Down speed',up:'Up speed',eta:'ETA',ratio:'Ratio',category:'Category',tags:'Tags'};
+const TORRENT_NUMERIC_DEFAULT_COLUMNS=new Set(['size','seeds','peers','down','up','eta','ratio']);
+// Checklist order follows qBittorrent's column order.
+const TORRENT_COLUMN_MENU_ORDER=['priority','name','size','total_size','progress','state','seeds','peers','down','up','eta','ratio','popularity','category','tags','creation_date','added_on','completion_on','tracker','dl_limit','up_limit','downloaded','uploaded','downloaded_session','uploaded_session','amount_left','time_active','save_path','completed','max_ratio','seen_complete','last_activity','availability','download_path','infohash_v1','infohash_v2','reannounce','private'];
+const TORRENT_COLUMN_KEYS=[...FIXED_TORRENT_COLUMN_ORDER,...Object.keys(TORRENT_EXTRA_COLUMNS)];
+function torrentColumnLabel(key){return TORRENT_COLUMN_LABELS[key]||TORRENT_EXTRA_COLUMNS[key]?.label||key}
+function torrentColumnDefaultShare(key){return FIXED_TORRENT_COLUMN_RATIOS[key]??TORRENT_EXTRA_COLUMNS[key]?.share??.06}
+const TORRENT_SORT_DEFAULT_DIRECTIONS={name:'asc',size:'desc',progress:'desc',state:'asc',seeds:'desc',peers:'desc',down:'desc',up:'desc',eta:'asc',ratio:'desc',category:'asc',tags:'asc',added:'desc',...Object.fromEntries(Object.entries(TORRENT_EXTRA_COLUMNS).map(([k,d])=>[k,d.dir||'asc']))};
 function normalizedTorrentSort(value=state.sort){
-  const match=String(value||'').match(/^([a-z]+)_(asc|desc)$/),key=match?.[1],dir=match?.[2];
-  return FIXED_TORRENT_COLUMN_ORDER.includes(key)||key==='added'?[key,dir]:['added','desc'];
+  const match=String(value||'').match(/^([a-z0-9_]+)_(asc|desc)$/),key=match?.[1],dir=match?.[2];
+  return TORRENT_COLUMN_KEYS.includes(key)||key==='added'?[key,dir]:['added','desc'];
 }
 function torrentSortValue(t,key){
   if(key==='name')return String(t.name||'').toLowerCase();
@@ -186,6 +227,7 @@ function torrentSortValue(t,key){
   if(key==='tags')return String(t.tags||'').toLowerCase();
   if(key==='tracker')return String(trackerHost(t.tracker)||'').toLowerCase();
   if(key==='added')return Number(t.added_on||0);
+  if(TORRENT_EXTRA_COLUMNS[key])return TORRENT_EXTRA_COLUMNS[key].sort(t);
   return 0;
 }
 function compareTorrentSortValues(a,b){
@@ -200,7 +242,7 @@ function syncTorrentSortHeaders(){
   });
 }
 function setTorrentSort(key){
-  if(!FIXED_TORRENT_COLUMN_ORDER.includes(key))return;
+  if(!TORRENT_COLUMN_KEYS.includes(key))return;
   const [current,dir]=normalizedTorrentSort(),next=current===key?(dir==='asc'?'desc':'asc'):(TORRENT_SORT_DEFAULT_DIRECTIONS[key]||'asc');
   state.sort=`${key}_${next}`;localStorage.tdSort=state.sort;syncTorrentSortHeaders();render();
 }
@@ -210,17 +252,20 @@ function applyFixedTorrentColumnLayout(){
   const cols=torrentColGroup(table);
   if(!torrentDesktopLayout()){
     table.style.width='';table.style.minWidth='';table.style.tableLayout='';
-    cols.forEach(col=>{col.style.width=''});
+    cols.forEach(col=>{col.style.width=''});wrap.classList.remove('torrent-cols-overflow');
     return;
   }
-  const widths=torrentColumnPixelWidths(wrap);
+  const widths=torrentColumnPixelWidths(wrap),dataWidth=Object.values(widths).reduce((sum,w)=>sum+w,0),overflow=dataWidth>torrentDataAreaPx(wrap)+1;
   cols.forEach(col=>{col.style.width=col.dataset.col?`${widths[col.dataset.col]}px`:`${TORRENT_FIXED_COLUMN_WIDTH}px`});
-  table.style.width='100%';table.style.minWidth='0';table.style.tableLayout='fixed';
+  wrap.classList.toggle('torrent-cols-overflow',overflow);
+  table.style.width=overflow?`${dataWidth+TORRENT_FIXED_COLUMN_WIDTH}px`:'100%';table.style.minWidth='0';table.style.tableLayout='fixed';
 }
 function bindTorrentColumnHeaderUI(){
   const head=$('#torrentTable thead');if(!head||head.dataset.columnUiBound==='1')return;head.dataset.columnUiBound='1';
+  ensureTorrentHeaderCells();
   const [sortKey,sortDir]=normalizedTorrentSort();state.sort=`${sortKey}_${sortDir}`;localStorage.tdSort=state.sort;
-  head.querySelectorAll('th[data-col]').forEach(th=>{
+  // Decorate every column header, including currently hidden (detached) ones.
+  torrentHeaderCellMap.forEach(th=>{
     th.tabIndex=0;th.title='Click to sort.';
     const label=th.textContent.trim();th.textContent='';
     const heading=document.createElement('span');heading.className='torrent-sort-heading';
@@ -233,11 +278,11 @@ function bindTorrentColumnHeaderUI(){
   head.addEventListener('keydown',event=>{if(event.key!=='Enter'&&event.key!==' ')return;const th=event.target.closest('th[data-col]');if(!th)return;event.preventDefault();setTorrentSort(th.dataset.col)});
 }
 
-// Customizable torrent columns (desktop/tablet). Order and widths are a browser-local
-// preference stored in tdTorrentLayout. Widths are stored as each column's share of the
-// data area, so the table always fits the torrent viewport exactly and never creates a
-// horizontal scrollbar: dragging a column's right edge trades width with its right-hand
-// neighbour, so only the grabbed boundary moves. Mobile keeps the fixed card order.
+// Customizable torrent columns (desktop/tablet). Visible columns, their order, and their
+// widths are a browser-local preference stored in tdTorrentLayout. Widths are relative
+// shares of the data area, so the table fits the torrent viewport exactly; only when the
+// visible columns' minimum widths cannot fit does the torrent viewport scroll sideways.
+// Dragging a column's right edge moves only that boundary. Mobile keeps the fixed card order.
 const TORRENT_LAYOUT_KEY='tdTorrentLayout';
 const TORRENT_DESKTOP_QUERY='(min-width:821px)';
 const TORRENT_COLUMN_MIN_PX={name:140,progress:96,state:72};
@@ -245,25 +290,47 @@ const TORRENT_COLUMN_DEFAULT_MIN_PX=52;
 const TORRENT_DRAG_THRESHOLD_PX=6;
 const TORRENT_KEYBOARD_RESIZE_PX=16;
 let torrentLayout=loadTorrentLayout(),torrentHeaderGesture=null,torrentHeaderSuppressClickUntil=0;
-function defaultTorrentLayout(){return{order:[...FIXED_TORRENT_COLUMN_ORDER],widths:{...FIXED_TORRENT_COLUMN_RATIOS}}}
+function defaultTorrentLayout(){return{order:[...FIXED_TORRENT_COLUMN_ORDER],widths:Object.fromEntries(TORRENT_COLUMN_KEYS.map(key=>[key,torrentColumnDefaultShare(key)])),extra:0}}
 function normalizeTorrentLayout(raw){
   const base=defaultTorrentLayout();
-  const order=Array.isArray(raw?.order)?raw.order.filter((key,index,all)=>FIXED_TORRENT_COLUMN_ORDER.includes(key)&&all.indexOf(key)===index):[];
-  for(const key of base.order)if(!order.includes(key))order.splice(Math.min(base.order.indexOf(key),order.length),0,key);
-  const widths={};let total=0;
-  for(const key of base.order){const value=Number(raw?.widths?.[key]);widths[key]=Number.isFinite(value)&&value>0.002&&value<1?value:base.widths[key];total+=widths[key]}
-  for(const key of base.order)widths[key]/=total;
-  return{order,widths};
+  const order=Array.isArray(raw?.order)?raw.order.filter((key,index,all)=>TORRENT_COLUMN_KEYS.includes(key)&&all.indexOf(key)===index):base.order;
+  if(!order.length)order.push(...base.order);
+  const widths={};
+  for(const key of TORRENT_COLUMN_KEYS){const value=Number(raw?.widths?.[key]);widths[key]=Number.isFinite(value)&&value>0.002&&value<1?value:torrentColumnDefaultShare(key)}
+  const extra=Number(raw?.extra);
+  return{order,widths,extra:Number.isFinite(extra)&&extra>0?Math.min(extra,20000):0};
 }
 function loadTorrentLayout(){try{return normalizeTorrentLayout(JSON.parse(localStorage.getItem(TORRENT_LAYOUT_KEY)||'null'))}catch{return defaultTorrentLayout()}}
 function saveTorrentLayout(){try{localStorage.setItem(TORRENT_LAYOUT_KEY,JSON.stringify(torrentLayout))}catch{}}
 function torrentDesktopLayout(){return !!window.matchMedia?.(TORRENT_DESKTOP_QUERY).matches}
 function torrentColumnOrder(){return torrentDesktopLayout()?torrentLayout.order:FIXED_TORRENT_COLUMN_ORDER}
-function torrentColumnMinPx(key){return TORRENT_COLUMN_MIN_PX[key]||TORRENT_COLUMN_DEFAULT_MIN_PX}
+// Display floors: how narrow a column may be squeezed by a small window before the
+// torrent viewport scrolls sideways. Lower than the drag minimums so the default columns
+// fit at every desktop width, as in earlier releases.
+const TORRENT_COLUMN_FLOOR_PX={name:96,progress:64,state:48};
+function torrentColumnFloorPx(key){return TORRENT_COLUMN_FLOOR_PX[key]||(TORRENT_EXTRA_COLUMNS[key]?.min?48:26)}
+function torrentColumnMinPx(key){return TORRENT_COLUMN_MIN_PX[key]||TORRENT_EXTRA_COLUMNS[key]?.min||TORRENT_COLUMN_DEFAULT_MIN_PX}
 function torrentDataAreaPx(wrap){return Math.max(0,Math.floor((wrap?.clientWidth||0)-TORRENT_FIXED_COLUMN_WIDTH))}
 function torrentColumnPixelWidths(wrap){
-  const available=torrentDataAreaPx(wrap),order=torrentLayout.order,out={};let used=0;
-  order.forEach((key,index)=>{const width=index===order.length-1?Math.max(0,available-used):Math.max(0,Math.floor(available*torrentLayout.widths[key]));out[key]=width;used+=width});
+  // extra: pixels the user has deliberately widened the table beyond the viewport.
+  const order=torrentColumnOrder(),available=torrentDataAreaPx(wrap)+(torrentDesktopLayout()?torrentLayout.extra||0:0),out={};
+  let free=[...order],remaining=available;
+  // Give each column its share; any column that would fall below its minimum is pinned at
+  // its display floor and the rest is redistributed among the others.
+  while(free.length){
+    const total=free.reduce((sum,key)=>sum+torrentLayout.widths[key],0)||1;
+    const under=free.filter(key=>torrentLayout.widths[key]/total*remaining<torrentColumnFloorPx(key));
+    if(!under.length)break;
+    for(const key of under){out[key]=torrentColumnFloorPx(key);remaining-=out[key]}
+    free=free.filter(key=>!under.includes(key));
+  }
+  if(free.length){
+    // Largest-remainder rounding: whole pixels that sum exactly to the available width.
+    const total=free.reduce((sum,key)=>sum+torrentLayout.widths[key],0)||1,space=Math.max(0,remaining);
+    const exact=free.map(key=>[key,space*torrentLayout.widths[key]/total]);let used=0;
+    for(const [key,value] of exact){out[key]=Math.floor(value);used+=out[key]}
+    exact.sort((a,b)=>(b[1]%1)-(a[1]%1)).slice(0,Math.max(0,Math.round(space-used))).forEach(([key])=>{out[key]+=1});
+  }
   return out;
 }
 function torrentColGroup(table){
@@ -277,17 +344,31 @@ function torrentColGroup(table){
   }
   return [...group.children];
 }
+const torrentHeaderCellMap=new Map();
+function ensureTorrentHeaderCells(){
+  const row=$('#torrentTable thead tr');if(!row)return;
+  row.querySelectorAll('th[data-col]').forEach(th=>torrentHeaderCellMap.set(th.dataset.col,th));
+  for(const key of TORRENT_COLUMN_KEYS){
+    if(torrentHeaderCellMap.has(key))continue;
+    const th=document.createElement('th');th.dataset.col=key;th.textContent=torrentColumnLabel(key);
+    if(TORRENT_EXTRA_COLUMNS[key]?.numeric)th.classList.add('torrent-col-numeric');
+    torrentHeaderCellMap.set(key,th);row.appendChild(th);
+  }
+}
 function torrentHeaderCells(){return [...document.querySelectorAll('#torrentTable thead th[data-col]')]}
 function syncTorrentHeaderOrder(){
   const row=$('#torrentTable thead tr');if(!row)return;
+  ensureTorrentHeaderCells();
   const order=torrentColumnOrder();
   if(torrentHeaderCells().map(th=>th.dataset.col).join()===order.join())return;
-  for(const key of order){const th=row.querySelector(`th[data-col="${key}"]`);if(th)row.appendChild(th)}
+  torrentHeaderCells().forEach(th=>{if(!order.includes(th.dataset.col))th.remove()});
+  for(const key of order){const th=torrentHeaderCellMap.get(key);if(th)row.appendChild(th)}
 }
 function bindTorrentColumnLayoutUI(){
   const row=$('#torrentTable thead tr');if(!row||row.dataset.layoutBound==='1')return;row.dataset.layoutBound='1';
-  row.querySelectorAll('th[data-col]').forEach(th=>{
-    th.title='Click to sort. Drag to move. Drag the right edge to resize. Right-click for column options.';
+  ensureTorrentHeaderCells();
+  torrentHeaderCellMap.forEach(th=>{
+    th.title='Click to sort. Drag to move. Drag the right edge to resize. Right-click to choose columns.';
     const grip=document.createElement('span');grip.className='torrent-col-resizer';grip.setAttribute('aria-hidden','true');grip.title='Drag to resize. Double-click to reset column widths.';
     th.appendChild(grip);
   });
@@ -302,12 +383,14 @@ function bindTorrentColumnLayoutUI(){
   window.addEventListener('pointercancel',torrentHeaderPointerEnd);
   // Desktop uses the custom order; mobile cards use the fixed order. Re-render when crossing the breakpoint.
   window.matchMedia?.(TORRENT_DESKTOP_QUERY).addEventListener?.('change',()=>render());
-  $('#torrentHeaderMenu')?.addEventListener('click',event=>{
-    const button=event.target.closest('button[data-layout]');if(!button)return;
-    $('#torrentHeaderMenu').classList.add('hidden');
-    if(button.dataset.layout==='widths')resetTorrentLayout({order:false});
-    else if(button.dataset.layout==='order')resetTorrentLayout({widths:false});
-    else resetTorrentLayout();
+  const menu=$('#torrentHeaderMenu');
+  menu?.addEventListener('click',event=>{
+    if(!event.target.closest('button[data-layout="reset"]'))return;
+    resetTorrentLayout();renderTorrentHeaderMenu();
+  });
+  menu?.addEventListener('change',event=>{
+    const box=event.target.closest('input[data-column]');if(!box)return;
+    setTorrentColumnVisible(box.dataset.column,box.checked);renderTorrentHeaderMenu();
   });
 }
 function torrentHeaderPointerDown(event){
@@ -315,8 +398,7 @@ function torrentHeaderPointerDown(event){
   const th=event.target.closest('th[data-col]');if(!th)return;
   const key=th.dataset.col;
   if(event.target.closest('.torrent-col-resizer')){
-    const order=torrentLayout.order;if(!order[order.indexOf(key)+1])return;
-    torrentHeaderGesture={type:'resize',key,startX:event.clientX,startPx:torrentColumnPixelWidths(th.closest('.table-wrap'))};
+    torrentHeaderGesture={type:'resize',key,startX:event.clientX,startPx:torrentColumnPixelWidths(th.closest('.table-wrap')),startExtra:torrentLayout.extra||0};
     document.body.classList.add('torrent-col-resizing');th.classList.add('torrent-col-resize-active');
     event.preventDefault();return;
   }
@@ -325,7 +407,7 @@ function torrentHeaderPointerDown(event){
 function torrentHeaderPointerMove(event){
   const gesture=torrentHeaderGesture;if(!gesture)return;
   if(gesture.type==='resize'){
-    if(applyTorrentColumnResize(gesture.key,gesture.startPx,event.clientX-gesture.startX)){gesture.changed=true;applyFixedTorrentColumnLayout()}
+    if(applyTorrentColumnResize(gesture.key,gesture.startPx,event.clientX-gesture.startX,gesture.startExtra)){gesture.changed=true;applyFixedTorrentColumnLayout()}
     event.preventDefault();return;
   }
   if(gesture.type==='pending'){
@@ -349,21 +431,26 @@ function torrentHeaderPointerEnd(event){
     if(event.type!=='pointercancel'&&Number.isInteger(gesture.target))moveTorrentColumn(gesture.key,gesture.target);
   }
 }
-function applyTorrentColumnResize(key,startPx,delta){
-  // Widening takes space from the columns to the right, nearest first, until each reaches
-  // its minimum; narrowing gives the freed space to the immediate right-hand neighbour.
-  // Columns to the left never move, and the table width never changes.
-  const order=torrentLayout.order,index=order.indexOf(key),right=order.slice(index+1);if(index<0||!right.length)return false;
-  const total=order.reduce((sum,k)=>sum+startPx[k],0);if(total<=0)return false;
-  const next={...startPx},minA=Math.min(torrentColumnMinPx(key),startPx[key]);
+function applyTorrentColumnResize(key,startPx,delta,startExtra=torrentLayout.extra||0){
+  // Widening takes space from the columns to the right, nearest first, down to their
+  // minimums; only if that is not enough does the table grow past the viewport (which then
+  // scrolls). Narrowing first gives back any such growth, then hands the space to the
+  // right-hand neighbour. Columns to the left never move.
+  const order=torrentLayout.order,index=order.indexOf(key),right=order.slice(index+1);if(index<0)return false;
+  const next={...startPx},minA=Math.min(torrentColumnMinPx(key),startPx[key]);let extra=startExtra;
   if(delta>=0){
     let need=delta;
     for(const k of right){if(need<=0)break;const take=Math.max(0,Math.min(need,startPx[k]-Math.min(torrentColumnMinPx(k),startPx[k])));next[k]-=take;need-=take}
-    next[key]=startPx[key]+(delta-need);
+    extra=startExtra+need;next[key]=startPx[key]+delta;
   }else{
-    const width=Math.max(minA,startPx[key]+delta);next[right[0]]+=startPx[key]-width;next[key]=width;
+    const width=Math.max(minA,startPx[key]+delta);let freed=startPx[key]-width;
+    const fromExtra=Math.min(freed,startExtra);extra=startExtra-fromExtra;freed-=fromExtra;
+    if(freed>0){if(!right.length)return false;next[right[0]]+=freed}
+    next[key]=width;
   }
+  const total=order.reduce((sum,k)=>sum+next[k],0);if(total<=0)return false;
   for(const k of order)torrentLayout.widths[k]=next[k]/total;
+  torrentLayout.extra=Math.max(0,Math.min(20000,Math.round(extra)));
   return true;
 }
 function moveTorrentColumn(key,index){
@@ -392,14 +479,30 @@ function torrentHeaderKeydown(event){
 function resetTorrentLayout({order=true,widths=true}={}){
   const base=defaultTorrentLayout();
   if(order)torrentLayout.order=base.order;
-  if(widths)torrentLayout.widths=base.widths;
+  if(widths){torrentLayout.widths=base.widths;torrentLayout.extra=0}
   saveTorrentLayout();render();
+}
+function setTorrentColumnVisible(key,visible){
+  if(!TORRENT_COLUMN_KEYS.includes(key))return false;
+  const order=torrentLayout.order.filter(k=>k!==key);
+  if(visible)order.push(key);
+  if(!order.length)return false;
+  torrentLayout.order=order;saveTorrentLayout();render();return true;
+}
+function renderTorrentHeaderMenu(){
+  const menu=$('#torrentHeaderMenu');if(!menu)return;
+  const visible=new Set(torrentLayout.order),last=visible.size===1;
+  const items=TORRENT_COLUMN_MENU_ORDER.map(key=>{
+    const label=TORRENT_EXTRA_COLUMNS[key]?.menu||torrentColumnLabel(key),checked=visible.has(key);
+    return`<label class="torrent-column-option"><input type="checkbox" data-column="${esc(key)}"${checked?' checked':''}${checked&&last?' disabled':''}><span>${esc(label)}</span></label>`;
+  }).join('');
+  menu.innerHTML=`<button type="button" data-layout="reset"><span>Reset</span></button><div class="menu-separator" role="separator"></div><div class="torrent-column-options">${items}</div>`;
 }
 function showTorrentHeaderMenu(event){
   if(!torrentDesktopLayout())return;
   const menu=$('#torrentHeaderMenu');if(!menu)return;
   event.preventDefault();
-  menu.innerHTML='<button type="button" data-layout="widths"><span>Reset column widths</span></button><button type="button" data-layout="order"><span>Reset column order</span></button><div class="menu-separator" role="separator"></div><button type="button" data-layout="all"><span>Reset columns</span></button>';
+  renderTorrentHeaderMenu();
   showMenu(menu,torrentMenuPointAnchor(event.clientX,event.clientY));
 }
 
@@ -1060,7 +1163,13 @@ function emptyStateCopy(){
 function swarmColumnValue(active,total){const connected=Math.max(0,Number(active)||0),available=Number(total);return Number.isFinite(available)&&available>=0?`${connected} (${Math.trunc(available)})`:String(connected)}
 function torrentSubtitle(t){const parts=[];if(t._server_name)parts.push(t._server_name);return parts.join(' · ')}
 function render(){const list=visibleTorrents();const order=torrentColumnOrder();$('#torrentRows').innerHTML=list.map(t=>rowHtml(t,order)).join('');applyFixedTorrentColumnLayout();syncTorrentSortHeaders();const empty=$('#empty');empty.classList.toggle('hidden',list.length>0);if(!list.length){const [title,text]=emptyStateCopy();$('#emptyTitle').textContent=title;$('#emptyText').textContent=text}$('#selectedCount').textContent=state.selected.size;$('#bulkbar').classList.toggle('hidden',!state.selected.size);$('#selectAll').checked=!!list.length&&list.every(t=>state.selected.has(keyFor(t)));syncTorrentWorkspaceLayout();requestAnimationFrame(syncMobileBulkbarOffset)}
-function rowHtml(t,order=torrentColumnOrder()){const pct=Math.max(0,Math.min(100,Number(t.progress||0)*100)),[label,cls]=stateInfo(t),sub=torrentSubtitle(t),tags=String(t.tags||'').trim();const cells={name:`<td data-col="name"><div class="torrent-name" title="${esc(t.name)}">${esc(t.name)}</div><div class="torrent-sub${sub?'':' hidden'}">${esc(sub)}</div></td>`,size:`<td class="mobile-grid" data-col="size" data-label="Size"><span class="mono">${bytes(t.size)}</span></td>`,state:`<td class="mobile-grid" data-col="state" data-label="Status"><span class="state ${cls}">${esc(uiText(label))}</span></td>`,progress:`<td class="progress-cell" data-col="progress"><div class="progress-top"><span>${pct.toFixed(1)}%</span><span>${bytes(t.amount_left)} Left</span></div><div class="track"><div class="fill" style="width:${pct}%"></div></div></td>`,seeds:`<td class="mobile-grid" data-col="seeds" data-label="Seeds"><span class="mono">${esc(swarmColumnValue(t.num_seeds,t.num_complete))}</span></td>`,peers:`<td class="mobile-grid" data-col="peers" data-label="Peers"><span class="mono">${esc(swarmColumnValue(t.num_leechs,t.num_incomplete))}</span></td>`,down:`<td class="mobile-grid" data-col="down" data-label="Download"><span class="mono">${speed(t.dlspeed||0)}</span></td>`,up:`<td class="mobile-grid" data-col="up" data-label="Upload"><span class="mono">${speed(t.upspeed||0)}</span></td>`,eta:`<td class="mobile-grid" data-col="eta" data-label="ETA"><span class="mono">${eta(t.eta)}</span></td>`,ratio:`<td class="mobile-grid" data-col="ratio" data-label="Ratio"><span class="mono">${Number(t.ratio||0).toFixed(2)}</span></td>`,category:`<td class="mobile-grid" data-col="category" data-label="Category"><span class="torrent-column-text" title="${esc(t.category||'')}">${esc(t.category||'—')}</span></td>`,tags:`<td class="mobile-grid" data-col="tags" data-label="Tags"><span class="torrent-column-text" title="${esc(tags)}">${esc(tags||'—')}</span></td>`};return`<tr class="${state.detail&&state.detail.server===(t._server_id||state.server)&&state.detail.hash===t.hash?'torrent-detail-selected':''}" data-key="${esc(keyFor(t))}" data-hash="${esc(t.hash)}" data-server="${esc(t._server_id||state.server)}"><td class="check"><input class="rowcheck" type="checkbox" ${state.selected.has(keyFor(t))?'checked':''}></td>${order.map(key=>cells[key]).join('')}</tr>`}
+function torrentExtraCell(t,key){
+  const def=TORRENT_EXTRA_COLUMNS[key];if(!def)return'';
+  let text='—';try{text=String(def.value(t)??'—')}catch{}
+  const title=def.title?String(def.title(t)||''):text;
+  return`<td class="mobile-grid${def.numeric?' torrent-col-numeric':''}" data-col="${key}" data-label="${esc(def.label)}"><span class="${def.numeric?'mono':'torrent-column-text'}" title="${esc(title)}">${esc(text)}</span></td>`;
+}
+function rowHtml(t,order=torrentColumnOrder()){const pct=Math.max(0,Math.min(100,Number(t.progress||0)*100)),[label,cls]=stateInfo(t),sub=torrentSubtitle(t),tags=String(t.tags||'').trim();const cells={name:`<td data-col="name"><div class="torrent-name" title="${esc(t.name)}">${esc(t.name)}</div><div class="torrent-sub${sub?'':' hidden'}">${esc(sub)}</div></td>`,size:`<td class="mobile-grid" data-col="size" data-label="Size"><span class="mono">${bytes(t.size)}</span></td>`,state:`<td class="mobile-grid" data-col="state" data-label="Status"><span class="state ${cls}">${esc(uiText(label))}</span></td>`,progress:`<td class="progress-cell" data-col="progress"><div class="progress-top"><span>${pct.toFixed(1)}%</span><span>${bytes(t.amount_left)} Left</span></div><div class="track"><div class="fill" style="width:${pct}%"></div></div></td>`,seeds:`<td class="mobile-grid" data-col="seeds" data-label="Seeds"><span class="mono">${esc(swarmColumnValue(t.num_seeds,t.num_complete))}</span></td>`,peers:`<td class="mobile-grid" data-col="peers" data-label="Peers"><span class="mono">${esc(swarmColumnValue(t.num_leechs,t.num_incomplete))}</span></td>`,down:`<td class="mobile-grid" data-col="down" data-label="Download"><span class="mono">${speed(t.dlspeed||0)}</span></td>`,up:`<td class="mobile-grid" data-col="up" data-label="Upload"><span class="mono">${speed(t.upspeed||0)}</span></td>`,eta:`<td class="mobile-grid" data-col="eta" data-label="ETA"><span class="mono">${eta(t.eta)}</span></td>`,ratio:`<td class="mobile-grid" data-col="ratio" data-label="Ratio"><span class="mono">${Number(t.ratio||0).toFixed(2)}</span></td>`,category:`<td class="mobile-grid" data-col="category" data-label="Category"><span class="torrent-column-text" title="${esc(t.category||'')}">${esc(t.category||'—')}</span></td>`,tags:`<td class="mobile-grid" data-col="tags" data-label="Tags"><span class="torrent-column-text" title="${esc(tags)}">${esc(tags||'—')}</span></td>`};return`<tr class="${state.detail&&state.detail.server===(t._server_id||state.server)&&state.detail.hash===t.hash?'torrent-detail-selected':''}" data-key="${esc(keyFor(t))}" data-hash="${esc(t.hash)}" data-server="${esc(t._server_id||state.server)}"><td class="check"><input class="rowcheck" type="checkbox" ${state.selected.has(keyFor(t))?'checked':''}></td>${order.map(key=>cells[key]??torrentExtraCell(t,key)).join('')}</tr>`}
 function rowChange(e){if(!e.target.classList.contains('rowcheck'))return;const tr=e.target.closest('tr'),k=tr.dataset.key;e.target.checked?state.selected.add(k):state.selected.delete(k);render()}
 function rowClick(e){if(Date.now()<torrentLongPressSuppressClickUntil){e.preventDefault();e.stopPropagation();return}const tr=e.target.closest('tr');if(!tr)return;if(e.target.closest('.rowcheck'))return;const server=tr.dataset.server,hash=tr.dataset.hash;if(state.detail?.server===server&&state.detail?.hash===hash){resetDetailPane();return}openDetail(server,hash)}
 const TORRENT_LONG_PRESS_MS=550,TORRENT_LONG_PRESS_MOVE_PX=12;
