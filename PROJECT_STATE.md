@@ -6,22 +6,21 @@
 
 ## Current baseline
 
-- Latest documented build: **v0.5.163** (prerelease)
+- Latest documented build: **v0.5.164** (prerelease)
 - Canonical upstream: `CynicaGaming/TorrentDashboard`
 
 ### Latest release summary
 
-Restores password confirmation during sign-up and gives administrators the full editable user form for Pending registrations before approval.
+Fixes reliability, performance, and information-disclosure issues found in a code review: a stalled HTTPS client can no longer freeze the dashboard, the status collector can no longer die permanently, and history writes and qBittorrent polling load are greatly reduced.
 
 ## Architecture state
 
-- Pending and active accounts share the same user-editing form; lifecycle state is controlled independently through explicit Approve and Reject actions.
+- Completion notifications are sent by a single bounded background dispatcher rather than inline in the collector loop.
 
 ## Current engineering decisions
 
-- Public registration remains limited to Username, Password, and Confirm password.
-- Administrators may complete profile fields, change group, or replace a Pending user's password before approval.
-- Clicking Approve first persists any edits currently entered in the Pending user's form.
+- Hidden tabs keep polling at a reduced rate so browser completion notifications continue to work.
+- Completion events remain immediate; only unchanged per-torrent history rows are deferred to the sample interval.
 
 ## Development principles
 
@@ -33,6 +32,15 @@ Restores password confirmation during sign-up and gives administrators the full 
 - Keep public development continuity portable across forks; label canonical repository/branch/PR references as upstream context rather than local identity.
 
 ## Recent work
+
+### v0.5.164 — Harden live status, HTTPS, and history writes
+
+Fixes reliability, performance, and information-disclosure issues found in a code review: a stalled HTTPS client can no longer freeze the dashboard, the status collector can no longer die permanently, and history writes and qBittorrent polling load are greatly reduced.
+
+- One stalled HTTPS connection no longer blocks every other browser; the TLS handshake now runs on the per-connection thread and TLS 1.2 is the minimum.
+- Per-torrent history rows are written once per sample interval instead of every second, and retention cleanup runs every 10 minutes instead of every second.
+- Completion notifications are delivered from a background queue so slow webhooks no longer stall live status.
+- The dashboard no longer overlaps status polls, discards stale responses after switching servers, and polls every 5 seconds while the tab is hidden.
 
 ### v0.5.163 — Confirm sign-up passwords and complete Pending users
 
@@ -68,23 +76,15 @@ Adds public account registration while keeping access administrator-controlled: 
 - Settings → Users now shows a Pending registrations queue with Approve and Reject actions.
 - A pending user who enters the correct credentials is told that the account is waiting for administrator approval.
 
-### v0.5.159 — Remove the System health settings page
-
-Removes the standalone System health settings category and its dedicated API because it duplicates status already available in the settings areas where users can act on it.
-
-- Removes System health from desktop and mobile Settings navigation.
-- Removes the dynamic System health card and browser polling code.
-- Removes the dedicated /api/system-health endpoint and its unused health aggregation helpers.
-- Browsers that previously stored System as the active Settings page now fall back to General.
-
 ## What to do next
 
-1. **Verify pending-user completion flow** — Register a test account, edit its profile/group/password from Users, approve it, and confirm the edited credentials and profile are active.
+1. **Verify HTTPS and live status after update** — Update an HTTPS-enabled install, confirm live status refreshes, completion notifications arrive, and history charts continue to populate.
 
 ## Known issues
 
 - Backup encryption remains opt-in; unencrypted portable backups can contain saved client and integration credentials and should be stored securely.
 - Windows executables are not code-signed yet.
+- qBittorrent and integration API keys are stored in plain text in config.json.
 
 ## Handoff instructions for a new development session
 

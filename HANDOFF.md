@@ -7,45 +7,44 @@
 This handoff is intentionally portable across public forks. Verify the current checkout's Git remote, branch, and open work before using upstream references as instructions.
 
 - Canonical upstream: `CynicaGaming/TorrentDashboard`
-- Last documented upstream build: **v0.5.163** (prerelease)
+- Last documented upstream build: **v0.5.164** (prerelease)
 
 ## Last known-good state
 
-Restores password confirmation during sign-up and gives administrators the full editable user form for Pending registrations before approval.
+Fixes reliability, performance, and information-disclosure issues found in a code review: a stalled HTTPS client can no longer freeze the dashboard, the status collector can no longer die permanently, and history writes and qBittorrent polling load are greatly reduced.
 
 The released-state details and recent history are in `PROJECT_STATE.md`; architectural constraints are in `ARCHITECTURE.md`.
 
 ## Active development intent
 
 - Status: **release-candidate**
-- Objective: **Publish v0.5.163 with password confirmation and complete Pending-user administration**
-- Why: Sign-up should protect against password typos, and administrators should be able to complete or correct a Pending account before approving it.
+- Objective: **Publish v0.5.164 with collector, HTTPS, history-write, and polling hardening**
+- Why: A code review found that a stalled HTTPS client could freeze the dashboard, the collector could die permanently, and history was written for every torrent every second.
 
 ### Acceptance criteria
 
-- Sign up requires Password and Confirm password and rejects mismatches server-side.
-- Pending accounts remain in the normal Users list with a Pending badge.
-- Pending users expose Username, User group, First name, Last name, Email, Password, and Confirm password fields.
-- Save preserves Pending status, while Approve persists edits and then activates the user.
-- Reject remains available for Pending users.
+- A stalled TLS client does not delay other HTTPS requests.
+- The collector survives unexpected errors and malformed settings.
+- Per-torrent history rows are written once per sample interval; completion events remain immediate.
+- Notifications are delivered without blocking the collector.
+- Unauthenticated setup and health endpoints no longer disclose network or process details after setup.
 - The full source matrix, source updater build, and compiled Windows smoke tests pass.
-- v0.5.163 publishes source and Windows updater packages with SHA-256 digests.
+- v0.5.164 publishes source and Windows updater packages with SHA-256 digests.
 
 ### Decisions already made
 
-- Public registration asks only for Username, Password, and Confirm password.
-- Pending users use the same editable administration form as active users.
-- Approve saves form edits before changing lifecycle state to Active.
+- Hidden tabs keep polling at a reduced rate so browser completion notifications continue to work.
+- Completion events remain immediate; only unchanged per-torrent history rows are deferred to the sample interval.
 
 ### Expected areas of change
 
-- `static/index.html`
-- `static/app.js`
-- `static/settings.js`
-- `static/sw.js`
 - `src/torrent_dashboard/dashboard.py`
+- `src/torrent_dashboard/history.py`
 - `src/torrent_dashboard/__init__.py`
-- `tests/test_registration_ui.py`
+- `static/app.js`
+- `static/index.html`
+- `static/sw.js`
+- `tests/test_review_hardening.py`
 - `release_tools/validate_ui_strings.py`
 - `release_notes/releases.json`
 - `development/current.json`
@@ -56,11 +55,11 @@ None currently recorded.
 
 ### Explicitly out of scope
 
-- No changes to registration rate limits, approval authorization, session policy, or recovery behavior in this release.
+- No changes to authentication modes, roles, registration, backup format, or updater behavior in this release.
 
 ## Exact next action
 
-Run full pull-request validation and Windows packaging; if green, merge and verify the complete updater-visible v0.5.163 release.
+Run full validation and Windows packaging; if green, publish and verify the complete updater-visible v0.5.164 release.
 
 ## Resume checklist
 
