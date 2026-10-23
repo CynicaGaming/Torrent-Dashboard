@@ -37,7 +37,8 @@ from torrent_dashboard.runtime_paths import (
 )
 
 PRESERVE_TOP_LEVEL = {"config.json", "data", ".git"}
-DEFAULT_REPOSITORY = "CynicaGaming/TorrentDashboard"
+DEFAULT_REPOSITORY = "CynicaGaming/Torrent-Dashboard"
+RETIRED_REPOSITORIES = ("CynicaGaming/TorrentDashboard",)
 GITHUB_API = "https://api.github.com"
 USER_AGENT = "Torrent-Dashboard-Recovery-Updater"
 WINDOWS_DISTRIBUTION = "windows-x64"
@@ -376,6 +377,8 @@ def configured_repository(target: Path) -> str:
         pass
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
         raise RuntimeError(f"Invalid GitHub repository: {repository}")
+    if repository.lower() in {repo.lower() for repo in RETIRED_REPOSITORIES}:
+        repository = DEFAULT_REPOSITORY
     return repository
 
 

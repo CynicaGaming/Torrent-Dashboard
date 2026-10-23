@@ -13,7 +13,11 @@ from .users import normalize_user, public_user, sync_legacy_auth
 from .persistence import atomic_write_json
 
 
-DEFAULT_UPDATE_REPOSITORY = "CynicaGaming/TorrentDashboard"
+DEFAULT_UPDATE_REPOSITORY = "CynicaGaming/Torrent-Dashboard"
+# Former default repository names. A saved setting that still points at one of these
+# was never customized, so it follows the default to its new name. Forks and other
+# custom repositories are left unchanged.
+RETIRED_UPDATE_REPOSITORIES = ("CynicaGaming/TorrentDashboard",)
 
 DEFAULT_CONFIG = {
     "setup": {"complete": False},
@@ -240,6 +244,8 @@ def normalize_config(raw, detect_lan_network: Callable[[], dict] | None = None):
         update_repo = normalize_github_repository(update_repo)
     except Exception:
         update_repo = DEFAULT_UPDATE_REPOSITORY
+    if update_repo.lower() in {repo.lower() for repo in RETIRED_UPDATE_REPOSITORIES}:
+        update_repo = DEFAULT_UPDATE_REPOSITORY
     merged["updates"] = {"repository": update_repo}
     merged["integrations"] = [
         item for item in merged.get("integrations", []) if item.get("type") != "github"
@@ -317,6 +323,7 @@ __all__ = [
     "ConfigRepository",
     "DEFAULT_CONFIG",
     "DEFAULT_UPDATE_REPOSITORY",
+    "RETIRED_UPDATE_REPOSITORIES",
     "deep_merge",
     "normalize_config",
     "normalize_github_repository",

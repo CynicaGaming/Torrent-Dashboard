@@ -6,45 +6,41 @@
 
 This handoff is intentionally portable across public forks. Verify the current checkout's Git remote, branch, and open work before using upstream references as instructions.
 
-- Canonical upstream: `CynicaGaming/TorrentDashboard`
-- Last documented upstream build: **v0.5.167** (prerelease)
+- Canonical upstream: `CynicaGaming/Torrent-Dashboard`
+- Last documented upstream build: **v0.5.168** (prerelease)
 
 ## Last known-good state
 
-Right-clicking the torrent header now shows a single Reset action and a checklist of every column qBittorrent's Web UI offers, so columns can be shown or hidden. Twenty-six columns are new, including Added on, Tracker, Save path, Downloaded/Uploaded, Time active, and Info hash.
+The project's GitHub repository was renamed to CynicaGaming/Torrent-Dashboard. The default update source now uses the new name, and installations still pointing at the old default switch automatically.
 
 The released-state details and recent history are in `PROJECT_STATE.md`; architectural constraints are in `ARCHITECTURE.md`.
 
 ## Active development intent
 
 - Status: **release-candidate**
-- Objective: **Publish v0.5.167 with a torrent column chooser covering every qBittorrent column**
-- Why: Users want to see the same torrent information qBittorrent offers and hide what they do not monitor, with one simple reset.
+- Objective: **Publish v0.5.168 with CynicaGaming/Torrent-Dashboard as the default update repository**
+- Why: The GitHub repository is being renamed from TorrentDashboard to Torrent-Dashboard.
 
 ### Acceptance criteria
 
-- Right-clicking the header shows Reset plus a checklist of all 38 qBittorrent columns.
-- Toggling a column shows or hides it immediately; the last visible column cannot be hidden.
-- All columns sort, move, and resize; the default view never needs a horizontal scrollbar.
-- The full source matrix, source updater build, and compiled Windows smoke tests pass.
-- v0.5.167 publishes source and Windows updater packages with SHA-256 digests.
+- New installations default to CynicaGaming/Torrent-Dashboard.
+- Saved settings that still use the old default migrate automatically; custom repositories are unchanged.
+- The GitHub repository is renamed before this release is published.
+- v0.5.168 publishes source and Windows updater packages with SHA-256 digests.
 
 ### Decisions already made
 
-- Match qBittorrent's Web UI column set and value conventions, omitting its decorative Status icon column.
-- Newly shown columns are appended at the right edge; hidden columns keep their width share for when they return.
-- At least one column must stay visible.
+- Only an unmodified saved default follows the rename; any other configured repository is treated as a deliberate choice.
 
 ### Expected areas of change
 
-- `static/app.js`
-- `static/app.css`
-- `static/index.html`
-- `static/sw.js`
-- `src/torrent_dashboard/__init__.py`
-- `release_tools/validate_ui_strings.py`
-- `DESIGN_LANGUAGE.md`
-- `TESTING.md`
+- `src/torrent_dashboard/config.py`
+- `src/torrent_dashboard/updater.py`
+- `src/torrent_dashboard/recovery_tool.py`
+- `tests/test_repository_rename.py`
+- `README.md`
+- `DEVELOPMENT.md`
+- `docs/WINDOWS_BUILD.md`
 - `release_notes/releases.json`
 - `development/current.json`
 
@@ -54,11 +50,11 @@ None currently recorded.
 
 ### Explicitly out of scope
 
-- Mobile card fields remain fixed.
+- No other updater behavior changes.
 
 ## Exact next action
 
-Run full validation and Windows packaging; if green, publish and verify the complete updater-visible v0.5.167 release.
+Rename the GitHub repository to Torrent-Dashboard, then publish and verify v0.5.168.
 
 ## Resume checklist
 

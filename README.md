@@ -6,7 +6,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.13+-3776AB?logo=python&logoColor=white)
 ![qBitTorrent](https://img.shields.io/badge/qBitTorrent-Web%20API-2F67BA)
-![Release](https://img.shields.io/github/v/release/CynicaGaming/TorrentDashboard?include_prereleases&label=pre-release)
+![Release](https://img.shields.io/github/v/release/CynicaGaming/Torrent-Dashboard?include_prereleases&label=pre-release)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey)
 
 </div>

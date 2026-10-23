@@ -21,7 +21,7 @@ class ConfigModuleTests(unittest.TestCase):
             loaded = repo.load()
             self.assertTrue(path.is_file())
             self.assertFalse(loaded["setup"]["complete"])
-            self.assertEqual(loaded["updates"]["repository"], "CynicaGaming/TorrentDashboard")
+            self.assertEqual(loaded["updates"]["repository"], "CynicaGaming/Torrent-Dashboard")
 
     def test_existing_config_migrates_setup_and_legacy_network_fields(self):
         raw = {

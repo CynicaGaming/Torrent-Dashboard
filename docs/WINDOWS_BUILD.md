@@ -48,7 +48,7 @@ Resolve the version from the checkout so the example stays synchronized:
 ```powershell
 $env:PYTHONPATH = "src"
 $version = python -c "from torrent_dashboard import __version__; print(__version__)"
-python release_tools/build_windows.py --repo "CynicaGaming/TorrentDashboard" --tag "v$version" --output dist-windows
+python release_tools/build_windows.py --repo "CynicaGaming/Torrent-Dashboard" --tag "v$version" --output dist-windows
 ```
 
 Replace the tag when `__version__` changes. For fork builds, replace the repository argument with the fork's `owner/repository` value.

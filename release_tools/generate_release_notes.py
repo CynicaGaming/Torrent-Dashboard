@@ -86,7 +86,7 @@ def load_active_work():
 
 
 def canonical_repository(project):
-    return str(project.get("canonical_repository") or project.get("repository") or "CynicaGaming/TorrentDashboard").strip()
+    return str(project.get("canonical_repository") or project.get("repository") or "CynicaGaming/Torrent-Dashboard").strip()
 
 
 def upstream_value(project, new_key, old_key):

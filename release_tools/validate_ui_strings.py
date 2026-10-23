@@ -353,7 +353,7 @@ def main():
 
     # Updates owns the public GitHub repository directly. GitHub must not be a
     # modular integration and update installation remains a reactive button.
-    assert 'DEFAULT_UPDATE_REPOSITORY = "CynicaGaming/TorrentDashboard"' in config_py
+    assert 'DEFAULT_UPDATE_REPOSITORY = "CynicaGaming/Torrent-Dashboard"' in config_py
     assert 'def update_repository(cfg):' in dashboard_py
     assert 'def save_update_source(cfg, repository):' in dashboard_py
     assert 'github_update_integration' not in dashboard_py

@@ -72,7 +72,7 @@ In short, on Windows the build path is:
 
 ```powershell
 python -m pip install "pyinstaller==6.22.2"
-python release_tools/build_windows.py --repo "CynicaGaming/TorrentDashboard" --tag "vX.Y.Z" --output dist-windows
+python release_tools/build_windows.py --repo "CynicaGaming/Torrent-Dashboard" --tag "vX.Y.Z" --output dist-windows
 ```
 
 The supplied tag must match `src/torrent_dashboard/__init__.py::__version__`. A normal source change can therefore be recompiled immediately; an official updater-visible increment should receive a new version before publication.

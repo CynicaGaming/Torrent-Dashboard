@@ -8,9 +8,44 @@
       "Use the same user-facing language for the same action and outcome across every surface.",
       "Keep public development continuity portable across forks; label canonical repository/branch/PR references as upstream context rather than local identity."
     ],
-    "canonical_repository": "CynicaGaming/TorrentDashboard"
+    "canonical_repository": "CynicaGaming/Torrent-Dashboard"
   },
   "releases": [
+    {
+      "version": "0.5.168",
+      "date": "2026-10-23",
+      "status": "prerelease",
+      "title": "Updates now come from CynicaGaming/Torrent-Dashboard",
+      "summary": "The project's GitHub repository was renamed to CynicaGaming/Torrent-Dashboard. The default update source now uses the new name, and installations still pointing at the old default switch automatically.",
+      "highlights": [
+        "Settings \u2192 Updates uses CynicaGaming/Torrent-Dashboard by default.",
+        "Installations whose update source is still the old default CynicaGaming/TorrentDashboard move to the new name automatically; custom or fork repositories are unchanged."
+      ],
+      "fixes": [],
+      "technical": [
+        "The dashboard configuration, standalone updater, and local recovery tool all map the retired default repository name to the new default when reading saved settings.",
+        "Release metadata, README badge, and build documentation reference the new repository name."
+      ],
+      "validation": [
+        "Adds tests covering the new default, migration of the saved old default (any letter case or URL form), and preservation of custom repositories in the dashboard, updater, and recovery tool.",
+        "Runs the standard Ubuntu/Windows Python 3.13/3.14 matrix, source updater build, and Windows executable smoke tests."
+      ],
+      "known_issues": [
+        "Backup encryption remains opt-in; unencrypted portable backups can contain saved client and integration credentials and should be stored securely.",
+        "Windows executables are not code-signed yet."
+      ],
+      "architecture": [],
+      "decisions": [
+        "Only an unmodified saved default follows the rename; any other configured repository is treated as a deliberate choice."
+      ],
+      "next_steps": [
+        {
+          "priority": 1,
+          "title": "Confirm updates from the renamed repository",
+          "detail": "After updating, open Settings \u2192 Updates, confirm the repository shows CynicaGaming/Torrent-Dashboard, and run Check for updates."
+        }
+      ]
+    },
     {
       "version": "0.5.167",
       "date": "2026-10-21",

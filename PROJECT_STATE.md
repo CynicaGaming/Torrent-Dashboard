@@ -6,22 +6,16 @@
 
 ## Current baseline
 
-- Latest documented build: **v0.5.167** (prerelease)
-- Canonical upstream: `CynicaGaming/TorrentDashboard`
+- Latest documented build: **v0.5.168** (prerelease)
+- Canonical upstream: `CynicaGaming/Torrent-Dashboard`
 
 ### Latest release summary
 
-Right-clicking the torrent header now shows a single Reset action and a checklist of every column qBittorrent's Web UI offers, so columns can be shown or hidden. Twenty-six columns are new, including Added on, Tracker, Save path, Downloaded/Uploaded, Time active, and Info hash.
-
-## Architecture state
-
-- Torrent columns are described by one registry (labels, formatting, sorting, alignment, default share, minimum) that drives header creation, row rendering, sorting, and the chooser.
+The project's GitHub repository was renamed to CynicaGaming/Torrent-Dashboard. The default update source now uses the new name, and installations still pointing at the old default switch automatically.
 
 ## Current engineering decisions
 
-- Match qBittorrent's Web UI column set and value conventions, omitting its decorative Status icon column.
-- Newly shown columns are appended at the right edge; hidden columns keep their width share for when they return.
-- At least one column must stay visible.
+- Only an unmodified saved default follows the rename; any other configured repository is treated as a deliberate choice.
 
 ## Development principles
 
@@ -33,6 +27,13 @@ Right-clicking the torrent header now shows a single Reset action and a checklis
 - Keep public development continuity portable across forks; label canonical repository/branch/PR references as upstream context rather than local identity.
 
 ## Recent work
+
+### v0.5.168 — Updates now come from CynicaGaming/Torrent-Dashboard
+
+The project's GitHub repository was renamed to CynicaGaming/Torrent-Dashboard. The default update source now uses the new name, and installations still pointing at the old default switch automatically.
+
+- Settings → Updates uses CynicaGaming/Torrent-Dashboard by default.
+- Installations whose update source is still the old default CynicaGaming/TorrentDashboard move to the new name automatically; custom or fork repositories are unchanged.
 
 ### v0.5.167 — Choose torrent columns, including every qBittorrent column
 
@@ -68,21 +69,12 @@ Fixes reliability, performance, and information-disclosure issues found in a cod
 - Completion notifications are delivered from a background queue so slow webhooks no longer stall live status.
 - The dashboard no longer overlaps status polls, discards stale responses after switching servers, and polls every 5 seconds while the tab is hidden.
 
-### v0.5.163 — Confirm sign-up passwords and complete Pending users
-
-Restores password confirmation during sign-up and gives administrators the full editable user form for Pending registrations before approval.
-
-- Adds Confirm password back to the public Sign up form and rejects mismatched passwords in both the browser and registration endpoint.
-- Gives Pending users the same Username, User group, First name, Last name, Email, Password, and Confirm password fields as active users.
-- Saves administrator edits automatically before approving a Pending user, while keeping approval and rejection explicit.
-
 ## What to do next
 
-1. **Compare extra columns with qBittorrent** — Enable the additional columns and compare values with qBittorrent's Web UI for the same torrents, especially limits, ratio limit, queue position, and private flags.
+1. **Confirm updates from the renamed repository** — After updating, open Settings → Updates, confirm the repository shows CynicaGaming/Torrent-Dashboard, and run Check for updates.
 
 ## Known issues
 
-- Mobile cards always show the default fields; the column chooser applies to desktop/tablet only.
 - Backup encryption remains opt-in; unencrypted portable backups can contain saved client and integration credentials and should be stored securely.
 - Windows executables are not code-signed yet.
 

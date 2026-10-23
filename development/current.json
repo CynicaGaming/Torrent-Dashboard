@@ -1,35 +1,31 @@
 {
   "schema": 1,
   "status": "release-candidate",
-  "objective": "Publish v0.5.167 with a torrent column chooser covering every qBittorrent column",
-  "why": "Users want to see the same torrent information qBittorrent offers and hide what they do not monitor, with one simple reset.",
+  "objective": "Publish v0.5.168 with CynicaGaming/Torrent-Dashboard as the default update repository",
+  "why": "The GitHub repository is being renamed from TorrentDashboard to Torrent-Dashboard.",
   "acceptance_criteria": [
-    "Right-clicking the header shows Reset plus a checklist of all 38 qBittorrent columns.",
-    "Toggling a column shows or hides it immediately; the last visible column cannot be hidden.",
-    "All columns sort, move, and resize; the default view never needs a horizontal scrollbar.",
-    "The full source matrix, source updater build, and compiled Windows smoke tests pass.",
-    "v0.5.167 publishes source and Windows updater packages with SHA-256 digests."
+    "New installations default to CynicaGaming/Torrent-Dashboard.",
+    "Saved settings that still use the old default migrate automatically; custom repositories are unchanged.",
+    "The GitHub repository is renamed before this release is published.",
+    "v0.5.168 publishes source and Windows updater packages with SHA-256 digests."
   ],
   "decisions": [
-    "Match qBittorrent's Web UI column set and value conventions, omitting its decorative Status icon column.",
-    "Newly shown columns are appended at the right edge; hidden columns keep their width share for when they return.",
-    "At least one column must stay visible."
+    "Only an unmodified saved default follows the rename; any other configured repository is treated as a deliberate choice."
   ],
   "files": [
-    "static/app.js",
-    "static/app.css",
-    "static/index.html",
-    "static/sw.js",
-    "src/torrent_dashboard/__init__.py",
-    "release_tools/validate_ui_strings.py",
-    "DESIGN_LANGUAGE.md",
-    "TESTING.md",
+    "src/torrent_dashboard/config.py",
+    "src/torrent_dashboard/updater.py",
+    "src/torrent_dashboard/recovery_tool.py",
+    "tests/test_repository_rename.py",
+    "README.md",
+    "DEVELOPMENT.md",
+    "docs/WINDOWS_BUILD.md",
     "release_notes/releases.json",
     "development/current.json"
   ],
   "blockers": [],
   "out_of_scope": [
-    "Mobile card fields remain fixed."
+    "No other updater behavior changes."
   ],
-  "next_action": "Run full validation and Windows packaging; if green, publish and verify the complete updater-visible v0.5.167 release."
+  "next_action": "Rename the GitHub repository to Torrent-Dashboard, then publish and verify v0.5.168."
 }

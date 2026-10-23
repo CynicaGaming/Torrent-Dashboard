@@ -51,7 +51,8 @@ DB_PATH = DATA_DIR / "torrent_desk.sqlite3"
 BACKUP_DIR = DATA_DIR / "recovery-backups"
 UPDATE_STATE_PATH = DATA_DIR / "update-status.json"
 UPDATES_DIR = DATA_DIR / "updates"
-DEFAULT_REPOSITORY = "CynicaGaming/TorrentDashboard"
+DEFAULT_REPOSITORY = "CynicaGaming/Torrent-Dashboard"
+RETIRED_REPOSITORIES = ("CynicaGaming/TorrentDashboard",)
 RECOVERY_KEY_PREFIX = "TDRK"
 
 
@@ -123,7 +124,8 @@ def normalize_repository(value: str) -> str:
 
 def configured_repository(cfg: dict) -> str:
     updates = cfg.get("updates") if isinstance(cfg.get("updates"), dict) else {}
-    return normalize_repository(updates.get("repository") or DEFAULT_REPOSITORY)
+    repository = normalize_repository(updates.get("repository") or DEFAULT_REPOSITORY)
+    return DEFAULT_REPOSITORY if repository.lower() in {repo.lower() for repo in RETIRED_REPOSITORIES} else repository
 
 
 def atomic_write_config(cfg: dict, path: Path | None = None) -> None:

@@ -133,7 +133,7 @@ class ReleaseProvenanceStoreTests(unittest.TestCase):
             updates_dir=self.updates,
             release_notes_path=self.notes,
             version="0.5.95",
-            default_repository="CynicaGaming/TorrentDashboard",
+            default_repository="CynicaGaming/Torrent-Dashboard",
         )
 
     def tearDown(self):
@@ -201,7 +201,7 @@ class ReleaseProvenanceStoreTests(unittest.TestCase):
         self.assertEqual(history[0]["sha256"], installed_digest)
         self.assertEqual(history[0]["package"], "installed.zip")
         payload = json.loads(self.integrity.read_text(encoding="utf-8"))
-        self.assertEqual(payload["repository"], "CynicaGaming/TorrentDashboard")
+        self.assertEqual(payload["repository"], "CynicaGaming/Torrent-Dashboard")
         self.assertEqual(len(payload["releases"]), 1)
 
     def test_latest_manifest_merge_preserves_current_override_behavior(self):
